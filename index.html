@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang='en'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width,initial-scale=1'>
+  <title>CampusConnect | Academic Administration</title>
+  <link rel='stylesheet' href='styles.css'>
+  <script src='script.js' defer></script>
+</head>
+<body>
+  <div class='app-shell'>
+    <aside class='sidebar' id='sidebar'>
+      <a class='brand' href='#dashboard'><b>CC</b><span><strong>Campus</strong>Connect<small>Academic administration</small></span></a>
+      <nav id='navigation' class='navigation' aria-label='Main navigation'></nav>
+      <div class='sidebar-bottom'><span class='online-dot'></span> System online</div>
+    </aside>
+    <main class='workspace'>
+      <header class='topbar'>
+        <button id='menu-button' class='icon-button mobile-only' aria-label='Open navigation'>☰</button>
+        <label class='global-search'><span>⌕</span><input id='global-search' placeholder='Search students, courses, or faculty...' autocomplete='off'></label>
+        <div class='top-actions'>
+          <button id='theme-toggle' class='icon-button' aria-label='Toggle dark mode'>◐</button>
+          <button id='refresh-button' class='icon-button' aria-label='Refresh data'>↻</button>
+          <details class='profile'><summary><span id='profile-initials'>AM</span><i id='profile-name'>Alex Morgan</i></summary><div><b id='profile-role-title'>University Administrator</b><small>Demo role simulation</small><label class='role-picker'>Viewing as<select id='role-switch'><option value='admin'>Administrator</option><option value='lecturer'>Lecturer</option><option value='student'>Student</option></select></label><button id='profile-settings'>Settings</button></div></details>
+        </div>
+      </header>
+      <div id='toast-region' class='toast-region' aria-live='polite'></div>
+      <div id='page-root'></div>
+    </main>
+  </div>
+  <div id='modal-root'></div>
+</body>
+</html>

@@ -4,12 +4,13 @@ const path = require('path');
 const { buildSchema } = require('graphql');
 const { createHandler } = require('graphql-http/lib/use/express');
 
-const schemas = ['student', 'course', 'instructor', 'enrollment'].map((name) => require(`./schema/${name}`));
-const rootValue = Object.assign({}, ...['studentResolver', 'courseResolver', 'instructorResolver', 'enrollmentResolver'].map((name) => require(`./resolvers/${name}`)));
+const schemas = ['student', 'course', 'instructor', 'enrollment', 'grade'].map((name) => require(`./schema/${name}`));
+const rootValue = Object.assign({}, ...['studentResolver', 'courseResolver', 'instructorResolver', 'enrollmentResolver', 'gradeResolver'].map((name) => require(`./resolvers/${name}`)));
 const students = require('./data/students');
 const courses = require('./data/courses');
 const instructors = require('./data/instructors');
 const enrollments = require('./data/enrollments');
+const grades = require('./data/grades');
 const schema = buildSchema(schemas.join('\n'));
 const formatError = (error) => ({
   message: error.message,
@@ -36,6 +37,10 @@ schema.getType('Enrollment').getFields().student.resolve = (enrollment) => stude
   .find((student) => student.id === enrollment.studentId);
 schema.getType('Enrollment').getFields().course.resolve = (enrollment) => courses
   .find((course) => course.id === enrollment.courseId);
+schema.getType('Grade').getFields().student.resolve = (grade) => students
+  .find((student) => student.id === grade.studentId);
+schema.getType('Grade').getFields().course.resolve = (grade) => courses
+  .find((course) => course.id === grade.courseId);
 const app = express();
 app.use(cors());
 app.get('/graphql', (_req, res) => res.sendFile(path.join(__dirname, 'graphiql.html')));
