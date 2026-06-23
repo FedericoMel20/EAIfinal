@@ -4,13 +4,13 @@ const path = require('path');
 const { buildSchema } = require('graphql');
 const { createHandler } = require('graphql-http/lib/use/express');
 
-const schemas = ['student', 'course', 'instructor', 'enrollment', 'grade'].map((name) => require(`./schema/${name}`));
-const rootValue = Object.assign({}, ...['studentResolver', 'courseResolver', 'instructorResolver', 'enrollmentResolver', 'gradeResolver'].map((name) => require(`./resolvers/${name}`)));
+const schemas = ['student', 'course', 'enrollment', 'grade'].map((name) => require(`./schema/${name}`));
+// Note: schema files were repurposed: course -> subject, enrollment -> class, grade -> score
+const rootValue = Object.assign({}, ...['studentResolver', 'subjectResolver', 'classResolver', 'scoreResolver'].map((name) => require(`./resolvers/${name}`)));
 const students = require('./data/students');
-const courses = require('./data/courses');
-const instructors = require('./data/instructors');
-const enrollments = require('./data/enrollments');
-const grades = require('./data/grades');
+const subjects = require('./data/subjects');
+const classes = require('./data/classes');
+const scores = require('./data/scores');
 const schema = buildSchema(schemas.join('\n'));
 const formatError = (error) => ({
   message: error.message,
@@ -23,24 +23,30 @@ const formatError = (error) => ({
 
 // Field resolvers keep relationships correct even when an object originates
 // from another relationship resolver rather than a top-level query.
-schema.getType('Student').getFields().enrolledCourses.resolve = (student) => enrollments
-  .filter((enrollment) => enrollment.studentId === student.id)
-  .map((enrollment) => courses.find((course) => course.id === enrollment.courseId)).filter(Boolean);
-schema.getType('Course').getFields().instructor.resolve = (course) => course.instructorId
-  ? instructors.find((instructor) => instructor.id === course.instructorId) || null : null;
-schema.getType('Course').getFields().enrolledStudents.resolve = (course) => enrollments
-  .filter((enrollment) => enrollment.courseId === course.id)
-  .map((enrollment) => students.find((student) => student.id === enrollment.studentId)).filter(Boolean);
-schema.getType('Instructor').getFields().assignedCourses.resolve = (instructor) => courses
-  .filter((course) => course.instructorId === instructor.id);
-schema.getType('Enrollment').getFields().student.resolve = (enrollment) => students
-  .find((student) => student.id === enrollment.studentId);
-schema.getType('Enrollment').getFields().course.resolve = (enrollment) => courses
-  .find((course) => course.id === enrollment.courseId);
-schema.getType('Grade').getFields().student.resolve = (grade) => students
-  .find((student) => student.id === grade.studentId);
-schema.getType('Grade').getFields().course.resolve = (grade) => courses
-  .find((course) => course.id === grade.courseId);
+// Attach field resolvers for new school model
+schema.getType('Student').getFields().scores.resolve = (student) => scores.filter((s) => s.studentId === student.id);
+schema.getType('Class').getFields().students.resolve = (cls) => students.filter((s) => s.className === cls.name);
+schema.getType('Class').getFields().totalStudents.resolve = (cls) => students.filter((s) => s.className === cls.name).length;
+schema.getType('Score').getFields().student.resolve = (score) => students.find((st) => st.id === score.studentId);
+schema.getType('Score').getFields().subject.resolve = (score) => subjects.find((sub) => sub.id === score.subjectId);
+schema.getType('Score').getFields().grade.resolve = (score) => {
+  if (typeof score.score !== 'number') return null;
+  if (score.score >= 85) return 'A';
+  if (score.score >= 75) return 'B';
+  if (score.score >= 65) return 'C';
+  if (score.score >= 55) return 'D';
+  if (score.score >= 40) return 'E';
+  return 'F';
+};
+schema.getType('Score').getFields().remark.resolve = (score) => {
+  if (typeof score.score !== 'number') return null;
+  if (score.score >= 85) return 'Excellent';
+  if (score.score >= 75) return 'Very Good';
+  if (score.score >= 65) return 'Credit';
+  if (score.score >= 55) return 'Satisfactory';
+  if (score.score >= 40) return 'Pass';
+  return 'Fail';
+};
 const app = express();
 app.use(cors());
 app.get('/graphql', (_req, res) => res.sendFile(path.join(__dirname, 'graphiql.html')));

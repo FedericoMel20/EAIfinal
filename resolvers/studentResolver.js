@@ -1,17 +1,63 @@
 const { GraphQLError } = require('graphql');
 const students = require('../data/students');
-const enrollments = require('../data/enrollments');
-const courses = require('../data/courses');
+const scores = require('../data/scores');
+const classes = require('../data/classes');
+const subjects = require('../data/subjects');
 const nextId = () => String(Math.max(0, ...students.map((s) => Number(s.id))) + 1);
 const text = (value, field) => { if (typeof value !== 'string' || !value.trim()) throw new GraphQLError(`${field} cannot be empty.`, { extensions: { code: 'BAD_USER_INPUT' } }); return value.trim(); };
 const get = (id) => students.find((s) => s.id === String(id));
-const view = (student) => ({ ...student, enrolledCourses: () => enrollments.filter((e) => e.studentId === student.id).map((e) => courses.find((c) => c.id === e.courseId)).filter(Boolean) });
+const gradeFromScore = (value) => {
+  if (value >= 85) return ['A', 'Excellent'];
+  if (value >= 75) return ['B', 'Very Good'];
+  if (value >= 65) return ['C', 'Credit'];
+  if (value >= 55) return ['D', 'Satisfactory'];
+  if (value >= 40) return ['E', 'Pass'];
+  return ['F', 'Fail'];
+};
+const buildScoreView = (item) => ({
+  ...item,
+  grade: gradeFromScore(item.score)[0],
+  remark: gradeFromScore(item.score)[1],
+  student: () => students.find((s) => s.id === item.studentId),
+  subject: () => subjects.find((s) => s.id === item.subjectId)
+});
+const view = (student) => ({
+  ...student,
+  scores: () => scores.filter((sc) => sc.studentId === student.id).map(buildScoreView)
+});
 const missing = (id) => new GraphQLError(`Student with id '${id}' was not found.`, { extensions: { code: 'NOT_FOUND' } });
 
 module.exports = {
   students: () => students.map(view),
   student: ({ id }) => { const item = get(id); if (!item) throw missing(id); return view(item); },
-  createStudent: ({ input }) => { const email = text(input.email, 'Email').toLowerCase(); if (students.some((s) => s.email.toLowerCase() === email)) throw new GraphQLError('A student with this email already exists.', { extensions: { code: 'DUPLICATE_RECORD' } }); const item = { id: nextId(), name: text(input.name, 'Name'), email, major: text(input.major, 'Major') }; students.push(item); return view(item); },
-  updateStudent: ({ id, input }) => { const item = get(id); if (!item) throw missing(id); if (input.email !== undefined) { const email = text(input.email, 'Email').toLowerCase(); if (students.some((s) => s.id !== item.id && s.email.toLowerCase() === email)) throw new GraphQLError('A student with this email already exists.', { extensions: { code: 'DUPLICATE_RECORD' } }); item.email = email; } if (input.name !== undefined) item.name = text(input.name, 'Name'); if (input.major !== undefined) item.major = text(input.major, 'Major'); return view(item); },
-  deleteStudent: ({ id }) => { const index = students.findIndex((s) => s.id === String(id)); if (index < 0) throw missing(id); if (enrollments.some((e) => e.studentId === String(id))) throw new GraphQLError('Cannot delete a student with active enrollments.', { extensions: { code: 'RELATIONSHIP_VIOLATION' } }); return view(students.splice(index, 1)[0]); }
+  createStudent: ({ input }) => {
+    const item = {
+      id: nextId(),
+      fullName: text(input.fullName, 'Full name'),
+      gender: text(input.gender, 'Gender'),
+      age: Number(input.age) || 0,
+      className: text(input.className, 'Class'),
+      parentContact: text(input.parentContact, 'Parent contact')
+    };
+    if (!classes.some((c) => c.name === item.className)) throw new GraphQLError(`Class '${item.className}' was not found.`, { extensions: { code: 'NOT_FOUND' } });
+    students.push(item);
+    return view(item);
+  },
+  updateStudent: ({ id, input }) => {
+    const item = get(id); if (!item) throw missing(id);
+    if (input.fullName !== undefined) item.fullName = text(input.fullName, 'Full name');
+    if (input.gender !== undefined) item.gender = text(input.gender, 'Gender');
+    if (input.age !== undefined) item.age = Number(input.age);
+    if (input.className !== undefined) {
+      if (!classes.some((c) => c.name === input.className)) throw new GraphQLError(`Class '${input.className}' was not found.`, { extensions: { code: 'NOT_FOUND' } });
+      item.className = text(input.className, 'Class');
+    }
+    if (input.parentContact !== undefined) item.parentContact = text(input.parentContact, 'Parent contact');
+    return view(item);
+  },
+  deleteStudent: ({ id }) => {
+    const index = students.findIndex((s) => s.id === String(id)); if (index < 0) throw missing(id);
+    if (scores.some((sc) => sc.studentId === String(id))) throw new GraphQLError('Cannot delete a student with recorded scores.', { extensions: { code: 'RELATIONSHIP_VIOLATION' } });
+    return students.splice(index, 1)[0];
+  }
 };

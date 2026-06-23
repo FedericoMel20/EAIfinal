@@ -1,24 +1,26 @@
 module.exports = `
-  type Grade {
+  type Score {
     id: ID!
     studentId: ID!
-    courseId: ID!
+    subjectId: ID!
+    score: Int!
     grade: String!
+    remark: String!
     student: Student!
-    course: Course!
+    subject: Subject!
   }
 
-  input AssignGradeInput { studentId: ID!, courseId: ID!, grade: String! }
-  input UpdateGradeInput { grade: String! }
+  input AssignScoreInput { studentId: ID!, subjectId: ID!, score: Int! }
+  input UpdateScoreInput { score: Int! }
 
   extend type Query {
-    grades: [Grade!]!
-    grade(id: ID!): Grade
+    scores: [Score!]!
+    score(id: ID!): Score
   }
 
   extend type Mutation {
-    assignGrade(input: AssignGradeInput!): Grade!
-    updateGrade(id: ID!, input: UpdateGradeInput!): Grade!
-    deleteGrade(id: ID!): Grade!
+    assignScore(input: AssignScoreInput!): Score!
+    updateScore(id: ID!, input: UpdateScoreInput!): Score!
+    deleteScore(id: ID!): Score!
   }
 `;

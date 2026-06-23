@@ -1,22 +1,28 @@
 module.exports = `
   type Student {
     id: ID!
-    name: String!
-    email: String!
-    major: String!
-    enrolledCourses: [Course!]!
+    fullName: String!
+    gender: String!
+    age: Int!
+    className: String!
+    parentContact: String!
+    scores: [Score!]!
   }
 
   input CreateStudentInput {
-    name: String!
-    email: String!
-    major: String!
+    fullName: String!
+    gender: String!
+    age: Int!
+    className: String!
+    parentContact: String!
   }
 
   input UpdateStudentInput {
-    name: String
-    email: String
-    major: String
+    fullName: String
+    gender: String
+    age: Int
+    className: String
+    parentContact: String
   }
 
   type Query {

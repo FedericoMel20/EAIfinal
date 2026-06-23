@@ -1,21 +1,33 @@
 module.exports = `
-  type Enrollment {
+  type Class {
     id: ID!
-    studentId: ID!
-    courseId: ID!
-    student: Student!
-    course: Course!
+    name: String!
+    level: Int!
+    capacity: Int!
+    totalStudents: Int!
+    students: [Student!]!
   }
 
-  input EnrollStudentInput { studentId: ID!, courseId: ID! }
+  input CreateClassInput {
+    name: String!
+    level: Int!
+    capacity: Int!
+  }
+
+  input UpdateClassInput {
+    name: String
+    level: Int
+    capacity: Int
+  }
 
   extend type Query {
-    enrollments: [Enrollment!]!
-    enrollment(id: ID!): Enrollment
+    classes: [Class!]!
+    class(id: ID!): Class
   }
 
   extend type Mutation {
-    enrollStudent(input: EnrollStudentInput!): Enrollment!
-    deleteEnrollment(id: ID!): Enrollment!
+    createClass(input: CreateClassInput!): Class!
+    updateClass(id: ID!, input: UpdateClassInput!): Class!
+    deleteClass(id: ID!): Class!
   }
 `;

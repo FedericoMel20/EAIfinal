@@ -1,144 +1,333 @@
 const API = 'http' + '://localhost:4000/graphql';
-const store = { students: [], courses: [], instructors: [], enrollments: [], page: 'dashboard', sort: {}, filters: {} };
-const rolePages = { admin: { dashboard:['D','Dashboard'], students:['S','Students'], courses:['C','Courses'], instructors:['I','Instructors'], enrollments:['E','Enrollments'], settings:['O','Settings'] }, lecturer: { dashboard:['D','Dashboard'], students:['S','Students'], courses:['C','Courses'], grades:['G','Grades'] }, student: { dashboard:['D','Home'], profile:['P','My Profile'], mycourses:['C','My Courses'], grades:['G','My Grades'] } };
-const roleLabels = { admin:['AM','Alex Morgan','University Administrator'], lecturer:['LK','Dr. Lee Kim','Lecturer'], student:['AJ','Alex Johnson','Computer Science Student'] };
-const demoStudentEmail = 'student@campusconnect.edu';
-store.grades = [];
-rolePages.admin.grades = ['G','Grades'];
 
-async function fetchGrades(){store.grades=(await request(`query{grades{id grade student{id name email} course{id title credits instructor{name}}}}`)).grades;}
-async function assignGrade(input){return request(`mutation($input:AssignGradeInput!){assignGrade(input:$input){id}}`,{input});}
-async function updateGrade(id,input){return request(`mutation($id:ID!,$input:UpdateGradeInput!){updateGrade(id:$id,input:$input){id}}`,{id,input});}
-async function deleteGrade(id){return request(`mutation($id:ID!){deleteGrade(id:$id){id}}`,{id});}
-const renderAdmin = render;
-
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('role-switch').onchange = (event) => applyRole(event.target.value);
-  applyRole(localStorage.getItem('cc-role') || 'admin');
-});
-
-function applyRole(role) {
-  store.role = role;
-  store.page = 'dashboard';
-  localStorage.setItem('cc-role', role);
-  const [initials, name, title] = roleLabels[role];
-  document.getElementById('profile-initials').textContent = initials;
-  document.getElementById('profile-name').textContent = name;
-  document.getElementById('profile-role-title').textContent = title;
-  document.getElementById('role-switch').value = role;
-  document.getElementById('profile-settings').style.display = role === 'admin' ? 'block' : 'none';
-  // Keep the demo role switch available in every view; role permissions still
-  // control the navigation and actions rendered for the selected role.
-  document.querySelector('.role-picker').style.display = 'grid';
-  const nav = document.getElementById('navigation');
-  nav.innerHTML = Object.entries(rolePages[role]).map(([key, item]) => `<button class='nav-item ${key === 'dashboard' ? 'active' : ''}' data-page='${key}'><span class='nav-icon'>${item[0]}</span>${item[1]}</button>`).join('');
-  if (store.students.length) render();
-}
-
-render = function roleAwareRender() {
-  if (store.role === 'student') {
-    document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.page === store.page));
-    document.getElementById('page-root').innerHTML = studentPortal();
-    return;
-  }
-  if (store.role === 'lecturer' && store.page === 'grades') {
-    document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.page === store.page));
-    document.getElementById('page-root').innerHTML = gradeManagement(true);
-    bindGradePage(true);
-    return;
-  }
-  if (store.role === 'admin' && store.page === 'grades') {
-    document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.page === store.page));
-    document.getElementById('page-root').innerHTML = gradeManagement(false);
-    bindGradePage(false);
-    return;
-  }
-  if (store.role === 'admin' && store.page === 'dashboard') {
-    document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.page === store.page));
-    document.getElementById('page-root').innerHTML = academicDashboard();
-    bindPage();
-    return;
-  }
-  if (store.role === 'lecturer' && (store.page === 'students' || store.page === 'courses')) {
-    document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.page === store.page));
-    document.getElementById('page-root').innerHTML = lecturerManagement(store.page);
-    return;
-  }
-  renderAdmin();
+const state = {
+  page: 'dashboard',
+  students: [],
+  subjects: [],
+  classes: [],
+  scores: [],
+  filters: {
+    studentsSearch: '', studentsLevel: 'all', studentsClass: 'all',
+    scoresSubject: 'all', scoresLevel: 'all', scoresClass: 'all', scoresStudent: '', scoresGrade: 'all',
+    classesSearch: '', subjectsSearch: ''
+  },
+  sort: {},
+  selectedStudent: null
 };
 
-function demoStudent() { return store.students.find((student) => student.email.toLowerCase() === demoStudentEmail) || { id: '4', name: 'Alex Johnson', email: demoStudentEmail, major: 'Computer Science', enrolledCourses: [] }; }
-function demoCourses() { const student = demoStudent(); return store.courses.filter((course) => student.enrolledCourses.some((enrolled) => enrolled.id === course.id)); }
-function gradePoints(grade) { return ({ A:4, 'A-':3.7, 'B+':3.3, B:3, 'B-':2.7, 'C+':2.3, C:2, 'C-':1.7, D:1, F:0 })[grade] ?? 0; }
-function gradeFor(course) { const item = store.grades.find((grade) => grade.student.email === demoStudentEmail && grade.course.id === course.id); return item ? [item.grade, gradePoints(item.grade)] : ['Pending', 0]; }
-function studentGpa() { const courses = demoCourses().filter((course) => gradeFor(course)[0] !== 'Pending'); const total = courses.reduce((sum, course) => sum + course.credits * gradeFor(course)[1], 0); const credits = courses.reduce((sum, course) => sum + course.credits, 0); return credits ? (total / credits).toFixed(2) : '0.00'; }
-function allGpas() { return store.students.map((student) => { const records = store.grades.filter((grade) => grade.student.id === student.id); const credits = records.reduce((sum, grade) => sum + grade.course.credits, 0); const points = records.reduce((sum, grade) => sum + grade.course.credits * gradePoints(grade.grade), 0); return { name: student.name, value: credits ? points / credits : 0 }; }).filter((item) => item.value); }
-function academicDashboard() { const gpas = allGpas(); const average = gpas.length ? (gpas.reduce((sum, item) => sum + item.value, 0) / gpas.length).toFixed(2) : '0.00'; const highest = gpas.length ? Math.max(...gpas.map((item) => item.value)).toFixed(2) : '0.00'; const activity = store.grades.slice(-5).reverse(); return `<section class='page'><div class='page-head'><div><p class='eyebrow'>ACADEMIC ADMINISTRATION</p><h1>Campus overview</h1><p>Live academic performance and operational activity.</p></div><button class='button' data-modal='student'>+ Add student</button></div><div class='stats'>${stat('Total Students',store.students.length,'Active learners')}${stat('Total Courses',store.courses.length,'Course catalogue')}${stat('Grades Assigned',store.grades.length,'Academic records')}${stat('Average GPA',average,'Across graded students')}${stat('Highest GPA',highest,'Current leader')}${stat('Enrollments',store.enrollments.length,'Course placements')}</div><div class='dashboard-grid'><article class='card'><h2>Recent academic activity</h2><div class='feed'>${activity.map((item) => `<div class='feed-item'><span class='feed-dot'></span><div><p>Grade assigned: ${esc(item.grade)}</p><small>${esc(item.student.name)} · ${esc(item.course.title)}</small></div></div>`).join('') || '<p class=muted>No grades have been assigned.</p>'}</div></article><article class='card'><h2>Academic health</h2><p class=muted>${store.grades.length} grade records are linked to enrollment relationships.</p><div class='health'><b>GraphQL Connected</b><p>Grade validation active</p><p>GPA calculated from live data</p></div></article></div></section>`; }
-function gradeManagement(lecturer) { const enrollmentOptions = store.enrollments.map((item) => `<option value='${item.student.id}:${item.course.id}'>${esc(item.student.name)} — ${esc(item.course.title)}</option>`).join(''); return `<section class='page'><div class='page-head'><div><p class='eyebrow'>${lecturer ? 'LECTURER WORKSPACE' : 'ACADEMIC ADMINISTRATION'}</p><h1>Grade Management</h1><p>Assign and update grades using enrolled student records.</p></div></div><div class='dashboard-grid'><article class='card'><h2>Assign grade</h2><form id='grade-form' class='modal-content'><label>Enrollment<select name='enrollment' required><option value=''>Select student and course</option>${enrollmentOptions}</select></label><label>Grade<select name='grade' required>${['A','A-','B+','B','B-','C+','C','C-','D','F'].map((grade) => `<option>${grade}</option>`).join('')}</select></label><button class='button'>Assign grade</button></form></article><article class='card'><h2>Grading rules</h2><p class='muted'>A student must be enrolled before a grade can be assigned. One grade record is allowed per student and course.</p></article></div><article class='card table-card' style='margin-top:18px'><div class='table-wrap'><table><thead><tr><th>Student</th><th>Course</th><th>Grade</th><th>Actions</th></tr></thead><tbody>${store.grades.map((item) => `<tr><td><b>${esc(item.student.name)}</b></td><td>${esc(item.course.title)}</td><td><select data-grade-select='${item.id}'>${['A','A-','B+','B','B-','C+','C','C-','D','F'].map((grade) => `<option ${grade===item.grade?'selected':''}>${grade}</option>`).join('')}</select></td><td class='actions'><button class='action' data-grade-save='${item.id}'>Update</button>${lecturer?'':`<button class='action delete' data-grade-delete='${item.id}'>Delete</button>`}</td></tr>`).join('') || '<tr><td colspan=4 class=empty>No grades assigned.</td></tr>'}</tbody></table></div></article></section>`; }
-function bindGradePage(lecturer) { const root = document.getElementById('page-root'); const form = root.querySelector('#grade-form'); form.onsubmit = async (event) => { event.preventDefault(); const [studentId, courseId] = new FormData(form).get('enrollment').split(':'); try { await assignGrade({ studentId, courseId, grade: new FormData(form).get('grade') }); toast('Grade assigned.','success'); refreshData(true); } catch (error) { toast(error.message,'error'); } }; root.onclick = async (event) => { const save = event.target.closest('[data-grade-save]'); const remove = event.target.closest('[data-grade-delete]'); try { if (save) { await updateGrade(save.dataset.gradeSave,{ grade: root.querySelector(`[data-grade-select='${save.dataset.gradeSave}']`).value }); toast('Grade updated.','success'); refreshData(true); } if (remove && !lecturer) { await deleteGrade(remove.dataset.gradeDelete); toast('Grade deleted.','success'); refreshData(true); } } catch (error) { toast(error.message,'error'); } }; }
-function lecturerManagement(type) { const rows = type === 'students' ? store.students.map((student) => `<tr><td><b>${esc(student.name)}</b></td><td>${esc(student.email)}</td><td>${esc(student.major)}</td><td>${pills(student.enrolledCourses)}</td></tr>`).join('') : store.courses.map((course) => `<tr><td><b>${esc(course.title)}</b></td><td>${course.credits}</td><td>${esc(course.instructor?.name || 'Unassigned')}</td><td>${course.enrolledStudents.length}</td></tr>`).join(''); const headers = type === 'students' ? '<th>Name</th><th>Email</th><th>Major</th><th>Enrolled Courses</th>' : '<th>Course</th><th>Credits</th><th>Instructor</th><th>Enrolled Students</th>'; return `<section class='page'><div class='page-head'><div><p class='eyebrow'>LECTURER WORKSPACE</p><h1>${type === 'students' ? 'Student Directory' : 'Assigned Courses'}</h1><p>View-only academic information for teaching staff.</p></div><div class='read-only'>No administrative actions available</div></div><article class='card table-card'><div class='table-wrap'><table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div></article></section>`; }
-function studentPortal() {
-  const student = demoStudent(); const courses = demoCourses();
-  if (store.page === 'profile') return studentProfile(student);
-  if (store.page === 'mycourses') return studentCourses(courses);
-  if (store.page === 'grades') return studentGrades(courses);
-  return `<section class='page'><div class='student-hero'><p class='eyebrow'>STUDENT SELF-SERVICE</p><h1>Welcome back, ${esc(student.name.split(' ')[0])}</h1><p>${esc(student.major)} · Student ID ${esc(student.id)}</p></div><div class='stats'>${stat('My Courses', courses.length, 'Current term')}${stat('Credits', courses.reduce((sum, course) => sum + course.credits, 0), 'In progress')}${stat('Current GPA', studentGpa(), 'Academic standing')}${stat('Profile', 'Active', 'Registration current')}</div><div class='dashboard-grid'><article class='card'><h2>My course schedule</h2><div class='feed'>${courses.map((course) => `<div class='feed-item'><span class='feed-dot'></span><div><p>${esc(course.title)}</p><small>${course.credits} credits · ${esc(course.instructor?.name || 'Instructor TBA')}</small></div></div>`).join('') || '<p class=muted>No courses assigned.</p>'}</div></article><article class='card'><h2>Academic summary</h2><p class='muted'>Your records are view-only in this demonstration portal.</p><div class='health'><b>Good standing</b><p>GraphQL student record connected</p><p>All current course enrollments shown</p></div></article></div></section>`;
-}
-function studentProfile(student) { return `<section class='page'><div class='page-head'><div><p class='eyebrow'>STUDENT SELF-SERVICE</p><h1>My Profile</h1><p>Personal academic information. This record is view-only.</p></div></div><article class='card'><div class='profile-card'><div><span>Full name</span><b>${esc(student.name)}</b></div><div><span>Student ID</span><b>${esc(student.id)}</b></div><div><span>Email</span><b>${esc(student.email)}</b></div><div><span>Major</span><b>${esc(student.major)}</b></div></div></article></section>`; }
-function studentCourses(courses) { return `<section class='page'><div class='page-head'><div><p class='eyebrow'>STUDENT SELF-SERVICE</p><h1>My Courses</h1><p>Courses currently assigned to Alex Johnson.</p></div></div><article class='card table-card'><div class='table-wrap'><table><thead><tr><th>Course Name</th><th>Credits</th><th>Assigned Instructor</th></tr></thead><tbody>${courses.map((course) => `<tr><td><b>${esc(course.title)}</b></td><td>${course.credits}</td><td>${esc(course.instructor?.name || 'Instructor TBA')}</td></tr>`).join('') || '<tr><td colspan=3 class=empty>No courses assigned.</td></tr>'}</tbody></table></div></article></section>`; }
-function studentGrades(courses) { return `<section class='page'><div class='page-head'><div><p class='eyebrow'>STUDENT SELF-SERVICE</p><h1>My Grades</h1><p>Academic performance for your current courses.</p></div><div class='read-only'>View-only academic record</div></div><div class='stats'>${stat('Current GPA', studentGpa(), 'Calculated from grades')}${stat('Completed Courses', courses.length, 'Current record')}</div><article class='card table-card'><div class='table-wrap'><table><thead><tr><th>Course</th><th>Grade</th><th>Grade points</th></tr></thead><tbody>${courses.map((course) => { const grade = gradeFor(course); return `<tr><td><b>${esc(course.title)}</b></td><td class='grade'>${grade[0]}</td><td>${grade[1].toFixed(1)}</td></tr>`; }).join('')}</tbody></table></div></article></section>`; }
-function lecturerGrades() { return `<section class='page'><div class='page-head'><div><p class='eyebrow'>LECTURER WORKSPACE</p><h1>Grade overview</h1><p>Student performance preview for teaching staff.</p></div></div><article class='card table-card'><div class='table-wrap'><table><thead><tr><th>Student</th><th>Course</th><th>Grade</th></tr></thead><tbody>${store.enrollments.map((enrollment) => `<tr><td>${esc(enrollment.student.name)}</td><td>${esc(enrollment.course.title)}</td><td class='grade'>${enrollment.student.email === demoStudentEmail ? gradeFor(store.courses.find((course) => course.id === enrollment.course.id))[0] : 'Pending'}</td></tr>`).join('')}</tbody></table></div></article></section>`; }
-const pages = { dashboard: ['▦','Dashboard'], students: ['◉','Students'], courses: ['▣','Courses'], instructors: ['♙','Instructors'], enrollments: ['↗','Enrollments'], settings: ['⚙','Settings'] };
+const gradeLevels = ['all','7','8','9'];
+const classStreams = ['all','7A','7B','8A','8B','9A','9B'];
+const scoreGrades = ['all','A','B','C','D','E','F'];
 
-document.addEventListener('DOMContentLoaded', () => { setupChrome(); refreshData(); });
+const navigation = { dashboard:'Dashboard', students:'Students', subjects:'Subjects', classes:'Classes', scores:'Scores', settings:'Settings' };
+
+const icons = {
+  dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  students: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21c.7-4 3.1-6 7-6s6.3 2 7 6"/></svg>',
+  subjects: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H20v17H7.5A3.5 3.5 0 0 0 4 22z"/><path d="M4 5.5V22M8 6h8M8 10h8"/></svg>',
+  classes: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h11v16H4zM8 8h3M8 12h3M18 8v12M15 16l3 4 3-4"/></svg>',
+  scores: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h3"/><path d="M18 16l2 2 3-4"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .33 1.78l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.78-.33 1.7 1.7 0 0 0-1 .97 1.7 1.7 0 0 1-2.94 0 1.7 1.7 0 0 0-1-.97 1.7 1.7 0 0 0-1.78.33l-.06.06A2 2 0 0 1 2.3 16.3l.06-.06a1.7 1.7 0 0 0 .33-1.78 1.7 1.7 0 0 0-.97-1 1.7 1.7 0 0 1 0-2.94 1.7 1.7 0 0 0 .97-1 1.7 1.7 0 0 0-.33-1.78L2.3 4.7A2 2 0 0 1 5.13 1.87l.06.06A1.7 1.7 0 0 0 7 3.26a1.7 1.7 0 0 0 1 .97 1.7 1.7 0 0 1 2.94 0 1.7 1.7 0 0 0 1-.97c.38-.28.8-.46 1.26-.52.46.06.88.24 1.26.52a1.7 1.7 0 0 0 1 .97 1.7 1.7 0 0 0 1.78-.33l.06-.06A2 2 0 0 1 22 7.7l-.06.06a1.7 1.7 0 0 0-.33 1.78 1.7 1.7 0 0 0 .97 1 1.7 1.7 0 0 1 0 2.94 1.7 1.7 0 0 0-.97 1z"/></svg>'
+};
+
+Object.keys(icons).forEach((key) => {
+  icons[key] = icons[key].replace('aria-hidden="true"', 'aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"');
+});
+
+document.addEventListener('DOMContentLoaded', () => { setup(); refreshAll(); });
+
 async function request(query, variables = {}) {
   const operation = typeof query === 'string' ? query.trim() : '';
-  if (!operation) throw new Error('Frontend prevented an empty GraphQL request. Check the browser console for the caller.');
-  console.log('GraphQL Query:', operation, 'Variables:', variables);
-  const response = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: operation, variables }) });
-  const json = await response.json().catch(() => ({}));
-  if (!response.ok || json.errors) throw Error(json.errors?.map((error) => error.message).join(' ') || 'Backend is unavailable.');
-  return json.data;
+  if (!operation) throw new Error('Frontend prevented an empty GraphQL request.');
+  const response = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ query:operation, variables }) });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.errors) throw new Error(result.errors?.map((error) => error.message).join(' ') || 'Backend is unavailable.');
+  return result.data;
 }
-async function fetchStudents(){store.students=(await request(`query{students{id name email major enrolledCourses{id title}}}`)).students;}
-async function fetchCourses(){store.courses=(await request(`query{courses{id title credits instructorId instructor{id name} enrolledStudents{id name}}}`)).courses;}
-async function fetchInstructors(){store.instructors=(await request(`query{instructors{id name department assignedCourses{id title}}}`)).instructors;}
-async function fetchEnrollments(){store.enrollments=(await request(`query{enrollments{id student{id name} course{id title}}}`)).enrollments;}
-async function createStudent(input){return request(`mutation($input:CreateStudentInput!){createStudent(input:$input){id}}`,{input});}
-async function updateStudent(id,input){return request(`mutation($id:ID!,$input:UpdateStudentInput!){updateStudent(id:$id,input:$input){id}}`,{id,input});}
-async function deleteStudent(id){return request(`mutation($id:ID!){deleteStudent(id:$id){id}}`,{id});}
-async function createCourse(input){return request(`mutation($input:CreateCourseInput!){createCourse(input:$input){id}}`,{input});}
-async function updateCourse(id,input){return request(`mutation($id:ID!,$input:UpdateCourseInput!){updateCourse(id:$id,input:$input){id}}`,{id,input});}
-async function deleteCourse(id){return request(`mutation($id:ID!){deleteCourse(id:$id){id}}`,{id});}
-async function createInstructor(input){return request(`mutation($input:CreateInstructorInput!){createInstructor(input:$input){id}}`,{input});}
-async function updateInstructor(id,input){return request(`mutation($id:ID!,$input:UpdateInstructorInput!){updateInstructor(id:$id,input:$input){id}}`,{id,input});}
-async function deleteInstructor(id){return request(`mutation($id:ID!){deleteInstructor(id:$id){id}}`,{id});}
-async function enrollStudent(input){return request(`mutation($input:EnrollStudentInput!){enrollStudent(input:$input){id}}`,{input});}
-async function deleteEnrollment(id){return request(`mutation($id:ID!){deleteEnrollment(id:$id){id}}`,{id});}
 
-function setupChrome(){
- document.getElementById('navigation').innerHTML=Object.entries(pages).map(([key,[icon,name]])=>`<button class='nav-item ${key==='dashboard'?'active':''}' data-page='${key}'><span class='nav-icon'>${icon}</span>${name}</button>`).join('');
- document.getElementById('navigation').onclick=e=>{const b=e.target.closest('[data-page]');if(b){store.page=b.dataset.page;render();document.getElementById('sidebar').classList.remove('open');}};
- document.getElementById('refresh-button').onclick=()=>refreshData(false);
- document.getElementById('menu-button').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
- document.getElementById('theme-toggle').onclick=toggleTheme; document.getElementById('profile-settings').onclick=()=>{store.page='settings';render();};
- document.getElementById('global-search').oninput=e=>{store.filters.global=e.target.value.toLowerCase();if(store.page!=='dashboard')render();};
- if(localStorage.getItem('cc-theme')==='dark')document.body.classList.add('dark');
+async function fetchStudents(){ state.students = (await request(`query{students{id fullName gender age className parentContact}}`)).students; }
+async function fetchSubjects(){ state.subjects = (await request(`query{subjects{id name}}`)).subjects; }
+async function fetchClasses(){ state.classes = (await request(`query{classes{id name totalStudents}}`)).classes; }
+async function fetchScores(){ state.scores = (await request(`query{scores{id score grade remark student{fullName className id} subject{id name}}}`)).scores; }
+
+async function createStudent(input){ return request(`mutation($input:CreateStudentInput!){createStudent(input:$input){id}}`,{input}); }
+async function updateStudent(id,input){ return request(`mutation($id:ID!,$input:UpdateStudentInput!){updateStudent(id:$id,input:$input){id}}`,{id,input}); }
+async function deleteStudent(id){ return request(`mutation($id:ID!){deleteStudent(id:$id){id}}`,{id}); }
+
+async function createClass(input){ return request(`mutation($input:CreateClassInput!){createClass(input:$input){id}}`,{input}); }
+async function updateClass(id,input){ return request(`mutation($id:ID!,$input:UpdateClassInput!){updateClass(id:$id,input:$input){id}}`,{id,input}); }
+async function deleteClass(id){ return request(`mutation($id:ID!){deleteClass(id:$id){id}}`,{id}); }
+
+async function createSubject(input){ return request(`mutation($input:CreateSubjectInput!){createSubject(input:$input){id}}`,{input}); }
+async function updateSubject(id,input){ return request(`mutation($id:ID!,$input:UpdateSubjectInput!){updateSubject(id:$id,input:$input){id}}`,{id,input}); }
+async function deleteSubject(id){ return request(`mutation($id:ID!){deleteSubject(id:$id){id}}`,{id}); }
+
+async function assignScore(input){ return request(`mutation($input:AssignScoreInput!){assignScore(input:$input){id}}`,{input}); }
+async function updateScore(id,input){ return request(`mutation($id:ID!,$input:UpdateScoreInput!){updateScore(id:$id,input:$input){id}}`,{id,input}); }
+async function deleteScore(id){ return request(`mutation($id:ID!){deleteScore(id:$id){id}}`,{id}); }
+
+async function refreshAll(initial=true){
+  document.getElementById('page-root').innerHTML = skeleton();
+  try {
+    await Promise.all([fetchStudents(), fetchSubjects(), fetchClasses(), fetchScores()]);
+    render();
+    if (!initial) toast('Data refreshed successfully.','success');
+  } catch (err) {
+    toast(err.message, 'error');
+    document.getElementById('page-root').innerHTML = `<section class='page'><article class='card'><h2>Could not connect to CampusConnect</h2><p class='muted'>Start the GraphQL backend and refresh this page.</p></article></section>`;
+  }
 }
-async function refreshData(initial=true){document.getElementById('page-root').innerHTML=skeleton();try{await Promise.all([fetchStudents(),fetchCourses(),fetchInstructors(),fetchEnrollments(),fetchGrades()]);render();if(!initial)toast('Data refreshed','success');}catch(e){toast(e.message,'error');document.getElementById('page-root').innerHTML=`<section class='page'><div class='card'><h2>Could not connect to CampusConnect</h2><p class='muted'>Start the GraphQL backend, then refresh this page.</p></div></section>`;}}
-function render(){document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===store.page)); document.getElementById('page-root').innerHTML=store.page==='dashboard'?dashboard():store.page==='settings'?settings():management(store.page); bindPage();}
-function dashboard(){const assignments=store.instructors.flatMap(i=>i.assignedCourses.map(c=>['Instructor assignment',`${i.name} teaches ${c.title}`]));const activities=[...store.students.slice(-2).reverse().map(s=>['New student added',s.name]),...store.enrollments.slice(-2).reverse().map(e=>['New enrollment',`${e.student.name} joined ${e.course.title}`]),...assignments.slice(-2)].slice(0,6);return `<section class='page'><div class='page-head'><div><p class='eyebrow'>ACADEMIC ADMINISTRATION</p><h1>Campus overview</h1><p>Live operational view of your university.</p></div><button class='button' data-modal='student'>+ Add student</button></div><div class='stats'>${stat('Total Students',store.students.length,'Active learners')}${stat('Total Courses',store.courses.length,'Course catalogue')}${stat('Total Instructors',store.instructors.length,'Teaching faculty')}${stat('Total Enrollments',store.enrollments.length,'Course placements')}</div><div class='dashboard-grid'><article class='card'><h2>Recent activity</h2><div class='feed'>${activities.length?activities.map(a=>`<div class='feed-item'><span class='feed-dot'></span><div><p>${esc(a[0])}</p><small>${esc(a[1])}</small></div></div>`).join(''):'<p class=muted>No recent activity.</p>'}</div></article><div><article class='card'><h2>Quick actions</h2><div class='quick-actions'><button data-modal='student'>◉ Add student</button><button data-modal='course'>▣ Add course</button><button data-modal='instructor'>♙ Add instructor</button><button data-modal='enrollment'>↗ Enroll student</button></div></article><article class='health'><b>System health</b><p>● GraphQL Connected</p><p>● Backend Online</p><p>● Docker ready</p></article></div></div></section>`;}
-function management(type){const meta={students:['Students','Manage learner records and academic pathways.',['Name','Email','Major','Enrolled Courses']],courses:['Courses','Manage your course catalogue and teaching assignments.',['Course Title','Credits','Instructor','Enrollments']],instructors:['Instructors','Manage faculty and department assignments.',['Name','Department','Assigned Courses']],enrollments:['Enrollments','Manage student course registrations.',['Student','Course']]}[type];const items=filtered(type);const filter=type==='students'?selectFilter('major','Major',[...new Set(store.students.map(x=>x.major))]):type==='courses'?selectFilter('credits','Credits',[1,2,3,4,5,6]):type==='instructors'?selectFilter('department','Department',[...new Set(store.instructors.map(x=>x.department))]):'';return `<section class='page'><div class='page-head'><div><p class='eyebrow'>ADMINISTRATION</p><h1>${meta[0]}</h1><p>${meta[1]}</p></div><button class='button' data-modal='${type==='students'?'student':type==='courses'?'course':type==='instructors'?'instructor':'enrollment'}'>+ ${type==='enrollments'?'Enroll student':'Add '+type.slice(0,-1)}</button></div><div class='toolbar'><input id='table-search' placeholder='Search ${type}...' value='${esc(store.filters[type+'Search']||'')}'><span>${filter}</span></div><article class='card table-card'><div class='table-wrap'><table><thead><tr>${meta[2].map((h,i)=>`<th data-sort='${type}:${i}'>${h} ↕</th>`).join('')}<th>Actions</th></tr></thead><tbody>${items.length?items.map(x=>row(type,x)).join(''):`<tr><td class='empty' colspan='${meta[2].length+1}'>No ${type} found.</td></tr>`}</tbody></table></div></article></section>`;}
-function row(type,x){if(type==='students')return `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.email)}</td><td>${esc(x.major)}</td><td>${pills(x.enrolledCourses)}</td>${actions(type,x.id)}</tr>`;if(type==='courses')return `<tr><td><b>${esc(x.title)}</b></td><td>${x.credits}</td><td>${esc(x.instructor?.name||'Unassigned')}</td><td>${x.enrolledStudents.length}</td>${actions(type,x.id)}</tr>`;if(type==='instructors')return `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.department)}</td><td>${pills(x.assignedCourses)}</td>${actions(type,x.id)}</tr>`;return `<tr><td><b>${esc(x.student.name)}</b></td><td>${esc(x.course.title)}</td>${actions(type,x.id,true)}</tr>`;}
-function actions(type,id,remove=false){return `<td class='actions'><button class='action' data-view='${type}:${id}'>View</button>${!remove?`<button class='action' data-edit='${type}:${id}'>Edit</button>`:''}<button class='action delete' data-delete='${type}:${id}'>${remove?'Remove':'Delete'}</button></td>`;}
-function filtered(type){let a=store[type];const q=(store.filters[type+'Search']||store.filters.global||'').toLowerCase();if(q)a=a.filter(x=>JSON.stringify(x).toLowerCase().includes(q));const f=store.filters[type+'Filter'];if(f){if(type==='students')a=a.filter(x=>x.major===f);if(type==='courses')a=a.filter(x=>String(x.credits)===f);if(type==='instructors')a=a.filter(x=>x.department===f);}const sort=store.sort[type];if(sort!==undefined)a=[...a].sort((a,b)=>String(value(type,a,sort)).localeCompare(String(value(type,b,sort)),undefined,{numeric:true}));return a;}
-function value(type,x,i){return type==='students'?[x.name,x.email,x.major,x.enrolledCourses.length][i]:type==='courses'?[x.title,x.credits,x.instructor?.name,x.enrolledStudents.length][i]:type==='instructors'?[x.name,x.department,x.assignedCourses.length][i]:[x.student.name,x.course.title][i];}
-function bindPage(){const root=document.getElementById('page-root');root.onclick=e=>{const m=e.target.closest('[data-modal]');if(m)return modal(m.dataset.modal);const edit=e.target.closest('[data-edit]');if(edit){const[t,id]=edit.dataset.edit.split(':');return modal(t.slice(0,-1),id);}const view=e.target.closest('[data-view]');if(view)return viewModal(...view.dataset.view.split(':'));const del=e.target.closest('[data-delete]');if(del)return confirmDelete(...del.dataset.delete.split(':'));const sort=e.target.closest('[data-sort]');if(sort){const[t,i]=sort.dataset.sort.split(':');store.sort[t]=+i;render();}if(e.target.id==='settings-theme')toggleTheme();};const search=root.querySelector('#table-search');if(search)search.oninput=e=>{store.filters[store.page+'Search']=e.target.value;render();};const filter=root.querySelector('#table-filter');if(filter)filter.onchange=e=>{store.filters[store.page+'Filter']=e.target.value;render();};}
-function modal(type,id){const item=id&&store[type+'s']?.find(x=>x.id===id);const label=id?'Edit':'Add';const fields=type==='student'?[['name','Full name'],['email','Email address'],['major','Major']]:type==='course'?[['title','Course title'],['credits','Credits','number'],['instructorId','Assigned instructor','select']]:type==='instructor'?[['name','Full name'],['department','Department']]:[['studentId','Student','studentSelect'],['courseId','Course','courseSelect']];openModal(`${label} ${type}`,`<form id='entity-form'>${fields.map(f=>field(f,item)).join('')}<div class='modal-footer'><button class='button secondary' type='button' data-close>Cancel</button><button class='button'>${label} ${type}</button></div></form>`,async form=>{let input=Object.fromEntries(new FormData(form));if(type==='course')input.credits=Number(input.credits);if(!validate(type,input))return;const op=type==='student'?(id?updateStudent(id,input):createStudent(input)):type==='course'?(id?updateCourse(id,input):createCourse(input)):type==='instructor'?(id?updateInstructor(id,input):createInstructor(input)):enrollStudent(input);await op;closeModal();toast(`${type[0].toUpperCase()+type.slice(1)} saved.`,'success');refreshData(true);});}
-function field(f,item){let val=item?.[f[0]]||'';if(f[2]==='select')return `<label>${f[1]}<select name='${f[0]}' required>${options(store.instructors,'name',val)}</select></label>`;if(f[2]==='studentSelect')return `<label>${f[1]}<select name='${f[0]}' required>${options(store.students,'name')}</select></label>`;if(f[2]==='courseSelect')return `<label>${f[1]}<select name='${f[0]}' required>${options(store.courses,'title')}</select></label>`;return `<label>${f[1]}<input name='${f[0]}' type='${f[2]||'text'}' value='${esc(val)}' ${f[0]==='credits'?'min=1 max=6':''} required></label>`;}
-function options(items,key,selected=''){return `<option value=''>Select...</option>${items.map(x=>`<option value='${x.id}' ${x.id===selected?'selected':''}>${esc(x[key])}</option>`).join('')}`;}
-function viewModal(type,id){const item=store[type]?.find(x=>x.id===id)||store[type+'s']?.find(x=>x.id===id);openModal(`${type.slice(0,-1)||type} details`,`<div class='modal-content'><pre>${esc(JSON.stringify(item,null,2))}</pre><div class='modal-footer'><button class='button' data-close>Close</button></div></div>`);}
-function confirmDelete(type,id){openModal('Confirm action',`<div class='modal-content'><p>Are you sure? This action cannot be undone while relationship rules are enforced.</p><div class='modal-footer'><button class='button secondary' data-close>Cancel</button><button class='button danger' id='confirm-delete'>Delete</button></div></div>`);document.getElementById('confirm-delete').onclick=async()=>{try{await ({students:deleteStudent,courses:deleteCourse,instructors:deleteInstructor,enrollments:deleteEnrollment}[type])(id);closeModal();toast('Record deleted.','success');refreshData(true);}catch(e){toast(e.message,'error');}};}
-function openModal(title,content,submit){document.getElementById('modal-root').innerHTML=`<div class='modal-backdrop'><div class='modal'><header><h2>${title}</h2><button class='icon-button' data-close>×</button></header>${content}</div></div>`;document.querySelectorAll('[data-close]').forEach(x=>x.onclick=closeModal);const form=document.getElementById('entity-form');if(form)form.onsubmit=async e=>{e.preventDefault();try{await submit(form);}catch(err){toast(err.message,'error');}};}
-function closeModal(){document.getElementById('modal-root').innerHTML='';}function validate(type,input){if(type==='course'&&(input.credits<1||input.credits>6)){toast('Credits must be between 1 and 6.','warning');return false;}if(Object.values(input).some(x=>!String(x).trim())){toast('Please complete all required fields.','warning');return false;}return true;}
-function selectFilter(key,label,items){return `<select id='table-filter'><option value=''>All ${label}s</option>${items.map(x=>`<option ${store.filters[store.page+'Filter']===String(x)?'selected':''}>${esc(x)}</option>`).join('')}</select>`;}function stat(label,count,sub){return `<article class='stat'><span>${label}</span><strong>${count}</strong><small>● ${sub}</small></article>`;}function pills(a=[]){return a.length?a.map(x=>`<span class='pill'>${esc(x.title||x.name)}</span>`).join(''):'<span class=pill>None</span>';}function esc(v){const d=document.createElement('div');d.textContent=v??'';return d.innerHTML;}function skeleton(){return `<section class='page'><div class='skeleton' style='width:170px'></div><div class='stats' style='margin-top:25px'>${[1,2,3,4].map(()=>'<div class=skeleton style=height:120px></div>').join('')}</div></section>`;}function toast(message,type){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=message;document.getElementById('toast-region').append(t);setTimeout(()=>t.remove(),4500);}function toggleTheme(){document.body.classList.toggle('dark');localStorage.setItem('cc-theme',document.body.classList.contains('dark')?'dark':'light');}function settings(){return `<section class='page'><div class='page-head'><div><p class=eyebrow>PLATFORM</p><h1>Settings</h1><p>Personalise your CampusConnect workspace.</p></div></div><article class='card'><h2>Appearance</h2><p class=muted>Theme preference is saved locally on this device.</p><button class='button secondary' id='settings-theme'>Toggle dark mode</button></article></section>`;}
+
+function setup(){
+  document.getElementById('navigation').innerHTML = Object.entries(navigation).map(([key,label]) => `<button class='nav-item ${key==='dashboard'?'active':''}' data-page='${key}'><span class='nav-icon'>${icons[key]}</span>${label}</button>`).join('');
+  document.getElementById('navigation').onclick = (e) => { const btn = e.target.closest('[data-page]'); if (btn) { state.page = btn.dataset.page; render(); document.getElementById('sidebar').classList.remove('open'); } };
+  document.getElementById('refresh-button').onclick = () => refreshAll(false);
+  document.getElementById('menu-button').onclick = () => document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('theme-toggle').onclick = () => { document.body.classList.toggle('dark'); localStorage.setItem('cc-theme', document.body.classList.contains('dark') ? 'dark' : 'light'); };
+  document.getElementById('global-search').oninput = (e) => { state.filters.global = e.target.value.toLowerCase(); if (state.page !== 'dashboard') render(); };
+  if (localStorage.getItem('cc-theme') === 'dark') document.body.classList.add('dark');
+}
+
+function render(){
+  document.querySelectorAll('.nav-item').forEach((it)=>it.classList.toggle('active', it.dataset.page===state.page));
+  if (state.page === 'dashboard') document.getElementById('page-root').innerHTML = dashboard(); else document.getElementById('page-root').innerHTML = tablePage(state.page);
+  bindPage();
+}
+
+function gradeFromScore(value){ if (!Number.isFinite(value)) return '—'; if (value>=85) return 'A'; if (value>=75) return 'B'; if (value>=65) return 'C'; if (value>=55) return 'D'; if (value>=40) return 'E'; return 'F'; }
+
+function dashboard(){
+  const totalStudents = state.students.length;
+  const totalClasses = state.classes.length;
+  const totalSubjects = state.subjects.length;
+  const totalScores = state.scores.length;
+  const scoresOnly = state.scores.map(s => s.score).filter(Number.isFinite);
+  const highest = scoresOnly.length ? Math.max(...scoresOnly) : '—';
+  const lowest = scoresOnly.length ? Math.min(...scoresOnly) : '—';
+  const avg = scoresOnly.length ? (scoresOnly.reduce((a,b)=>a+b,0)/scoresOnly.length).toFixed(2) : '—';
+  const gradeCounts = { A:0,B:0,C:0,D:0,E:0,F:0 };
+  state.scores.forEach(s => { const g = s.grade || gradeFromScore(s.score); if (gradeCounts[g] !== undefined) gradeCounts[g]++; });
+  const levels = ['7','8','9'].map((level)=>({ level, count: state.students.filter((s)=>s.className?.startsWith(level)).length }));
+  const classes = ['7A','7B','8A','8B','9A','9B'].map((name)=>({ name, count: state.students.filter((s)=>s.className===name).length }));
+  const studentAverages = state.students.map((student)=>{
+    const scores = state.scores.filter((s)=>s.student?.id===student.id);
+    const average = scores.length ? scores.reduce((sum,s)=>sum+s.score,0)/scores.length : null;
+    return { student, average };
+  }).filter((item)=>item.average !== null);
+  const topStudents = [...studentAverages].sort((a,b)=>b.average-a.average).slice(0,3);
+  const lowestStudents = [...studentAverages].sort((a,b)=>a.average-b.average).slice(0,3);
+  const subjectAverages = state.subjects.map((subject)=>{
+    const scores = state.scores.filter((s)=>s.subject?.id===subject.id).map((s)=>s.score).filter(Number.isFinite);
+    const average = scores.length ? scores.reduce((sum,v)=>sum+v,0)/scores.length : null;
+    return { subject, average };
+  }).filter((item)=>item.average !== null);
+  const bestSubject = subjectAverages.sort((a,b)=>b.average-a.average)[0];
+  const difficultSubject = subjectAverages.sort((a,b)=>a.average-b.average)[0];
+  return `
+    <section class='page'>
+      <div class='page-head'><div><p class='eyebrow'>JUNIOR SECONDARY ADMIN</p><h1>School overview</h1><p>Live management and academic metrics (Grades 7–9).</p></div><button class='button' data-add='student'>+ Add student</button></div>
+      <div class='stats'>${stat('Total Students', totalStudents)}${stat('Total Classes', totalClasses)}${stat('Total Subjects', totalSubjects)}${stat('Total Scores', totalScores)}${stat('Highest Score', highest)}${stat('Lowest Score', lowest)}${stat('Average Score', avg)}</div>
+      <div class='dashboard-grid'>
+        <article class='card'><h2>Students by level</h2><div class='feed'>${levels.map((item)=>`<div class='feed-item'><div><p>Grade ${item.level}</p><small>${item.count} students</small></div></div>`).join('')}</div></article>
+        <article class='card'><h2>Students by class</h2><div class='feed'>${classes.map((item)=>`<div class='feed-item'><div><p>${item.name}</p><small>${item.count} students</small></div></div>`).join('')}</div></article>
+      </div>
+      <div class='dashboard-grid'>
+        <article class='card'><h2>Top performing students</h2><div class='feed'>${topStudents.length ? topStudents.map((item)=>`<div class='feed-item'><span class='feed-dot'></span><div><p>${esc(item.student.fullName)}</p><small>Avg ${item.average.toFixed(1)}</small></div></div>`).join('') : '<p class=muted>No scored students yet.</p>'}</div></article>
+        <article class='card'><h2>Lowest performing students</h2><div class='feed'>${lowestStudents.length ? lowestStudents.map((item)=>`<div class='feed-item'><span class='feed-dot'></span><div><p>${esc(item.student.fullName)}</p><small>Avg ${item.average.toFixed(1)}</small></div></div>`).join('') : '<p class=muted>No scored students yet.</p>'}</div></article>
+      </div>
+      <div class='dashboard-grid'>
+        <article class='card'><h2>Most difficult subject</h2><div class='feed'><div class='feed-item'><div><p>${difficultSubject ? esc(difficultSubject.subject.name) : 'No data'}</p><small>${difficultSubject ? `Avg ${difficultSubject.average.toFixed(1)}` : ''}</small></div></div></div></article>
+        <article class='card'><h2>Best performing subject</h2><div class='feed'><div class='feed-item'><div><p>${bestSubject ? esc(bestSubject.subject.name) : 'No data'}</p><small>${bestSubject ? `Avg ${bestSubject.average.toFixed(1)}` : ''}</small></div></div></div></article>
+      </div>
+    </section>`;
+}
+
+function tablePage(type){
+  const meta = {
+    students: ['Students',['Name','Gender','Age','Class','Parent contact'] ],
+    subjects: ['Subjects',['Subject'] ],
+    classes: ['Classes',['Class','Level','Capacity','Total Students'] ],
+    scores: ['Scores',['Student','Class','Subject','Score','Grade','Remark'] ]
+  }[type];
+  const items = filtered(type);
+  const addType = type === 'students' ? 'student' : type === 'subjects' ? 'subject' : type === 'classes' ? 'class' : type === 'scores' ? 'score' : '';
+  return `<section class='page'><div class='page-head'><div><p class='eyebrow'>SCHOOL MANAGEMENT</p><h1>${meta[0]}</h1><p>Manage ${meta[0].toLowerCase()} and records.</p></div><button class='button' data-add='${addType}'>+ Add ${addType}</button></div>${toolbar(type)}<article class='card table-card'><div class='table-wrap'><table><thead><tr>${meta[1].map((h,i)=>`<th data-sort='${i}'>${h} ↕</th>`).join('')}<th>Actions</th></tr></thead><tbody>${items.length ? items.map((it)=>row(type,it)).join('') : `<tr><td class='empty' colspan='${meta[1].length+1}'>No ${meta[0].toLowerCase()} found.</td></tr>`}</tbody></table></div></article></section>`;
+}
+
+function toolbar(type){
+  if (type === 'students') {
+    return `<div class='toolbar'>
+      <label>Level<select id='filter-students-level'>${gradeLevels.map((level)=>`<option value='${level}' ${state.filters.studentsLevel===level?'selected':''}>${level==='all'?'All levels':`Grade ${level}`}</option>`).join('')}</select></label>
+      <label>Class<select id='filter-students-class'>${classStreams.map((cls)=>`<option value='${cls}' ${state.filters.studentsClass===cls?'selected':''}>${cls==='all'?'All classes':cls}</option>`).join('')}</select></label>
+      <label>Search<input id='filter-students-search' placeholder='Search student name or ID...' value='${esc(state.filters.studentsSearch)}'></label>
+      <button class='button secondary' id='clear-filters'>Clear filters</button>
+    </div>`;
+  }
+  if (type === 'scores') {
+    const subjectOptions = ['all', ...state.subjects.map((s)=>s.name)];
+    return `<div class='toolbar'>
+      <label>Subject<select id='filter-scores-subject'>${subjectOptions.map((name)=>`<option value='${esc(name)}' ${state.filters.scoresSubject===name?'selected':''}>${name==='all'?'All subjects':esc(name)}</option>`).join('')}</select></label>
+      <label>Level<select id='filter-scores-level'>${gradeLevels.map((level)=>`<option value='${level}' ${state.filters.scoresLevel===level?'selected':''}>${level==='all'?'All levels':`Grade ${level}`}</option>`).join('')}</select></label>
+      <label>Class<select id='filter-scores-class'>${classStreams.map((cls)=>`<option value='${cls}' ${state.filters.scoresClass===cls?'selected':''}>${cls==='all'?'All classes':cls}</option>`).join('')}</select></label>
+      <label>Student<input id='filter-scores-student' placeholder='Search student name...' value='${esc(state.filters.scoresStudent)}'></label>
+      <label>Grade<select id='filter-scores-grade'>${scoreGrades.map((grade)=>`<option value='${grade}' ${state.filters.scoresGrade===grade?'selected':''}>${grade==='all'?'All grades':grade}</option>`).join('')}</select></label>
+      <button class='button secondary' id='clear-filters'>Clear filters</button>
+    </div>`;
+  }
+  if (type === 'classes') {
+    return `<div class='toolbar'><label>Search<input id='filter-classes-search' placeholder='Search class name...' value='${esc(state.filters.classesSearch)}'></label><button class='button secondary' id='clear-filters'>Clear filters</button></div>`;
+  }
+  if (type === 'subjects') {
+    return `<div class='toolbar'><label>Search<input id='filter-subjects-search' placeholder='Search subject...' value='${esc(state.filters.subjectsSearch)}'></label><button class='button secondary' id='clear-filters'>Clear filters</button></div>`;
+  }
+  return `<div class='toolbar'></div>`;
+}
+
+function row(type,item){
+  if (type==='students') return `<tr><td><b><a href='#' data-profile='${item.id}'>${esc(item.fullName)}</a></b></td><td>${esc(item.gender)}</td><td>${item.age}</td><td>${esc(item.className)}</td><td>${esc(item.parentContact)}</td>${actions('students',item.id)}</tr>`;
+  if (type==='subjects') return `<tr><td>${esc(item.name)}</td>${actions('subjects',item.id)}</tr>`;
+  if (type==='classes') return `<tr><td><b><a href='#' data-class='${item.id}'>${esc(item.name)}</a></b></td><td>${item.level}</td><td>${item.capacity}</td><td>${item.totalStudents}</td>${actions('classes',item.id)}</tr>`;
+  if (type==='scores') return `<tr><td>${esc(item.student?.fullName)}</td><td>${esc(item.student?.className)}</td><td>${esc(item.subject?.name)}</td><td class='grade'>${item.score}</td><td>${esc(item.grade)}</td><td>${esc(item.remark)}</td>${actions('scores',item.id)}</tr>`;
+  return '';
+}
+
+function actions(type,id){
+  return `<td class='actions'><button class='action' data-edit='${type}:${id}'>Edit</button><button class='action delete' data-delete='${type}:${id}'>Delete</button></td>`;
+}
+
+function filtered(type){
+  let items = [...(state[type]||[])];
+  if (type === 'students') {
+    const level = state.filters.studentsLevel;
+    const cls = state.filters.studentsClass;
+    const q = (state.filters.studentsSearch || '').toLowerCase();
+    if (level !== 'all') items = items.filter((item) => item.className?.startsWith(level));
+    if (cls !== 'all') items = items.filter((item) => item.className === cls);
+    if (q) items = items.filter((item) => (`${item.fullName} ${item.id}`).toLowerCase().includes(q));
+    return items;
+  }
+  if (type === 'scores') {
+    const subject = state.filters.scoresSubject;
+    const level = state.filters.scoresLevel;
+    const cls = state.filters.scoresClass;
+    const student = (state.filters.scoresStudent || '').toLowerCase();
+    const grade = state.filters.scoresGrade;
+    if (subject !== 'all') items = items.filter((item) => item.subject?.name === subject);
+    if (level !== 'all') items = items.filter((item) => item.student?.className?.startsWith(level));
+    if (cls !== 'all') items = items.filter((item) => item.student?.className === cls);
+    if (grade !== 'all') items = items.filter((item) => item.grade === grade);
+    if (student) items = items.filter((item) => item.student?.fullName?.toLowerCase().includes(student));
+    return items;
+  }
+  if (type === 'classes') {
+    const q = (state.filters.classesSearch || '').toLowerCase();
+    if (q) items = items.filter((item) => (`${item.name} ${item.level} ${item.capacity}`).toLowerCase().includes(q));
+    return items;
+  }
+  if (type === 'subjects') {
+    const q = (state.filters.subjectsSearch || '').toLowerCase();
+    if (q) items = items.filter((item) => item.name.toLowerCase().includes(q));
+    return items;
+  }
+  const q = (state.filters[state.page] || state.filters.global || '').toLowerCase();
+  if (q) items = items.filter((item)=> JSON.stringify(item).toLowerCase().includes(q));
+  return items;
+}
+
+function bindPage(){
+  const root = document.getElementById('page-root');
+  root.onclick = (event) => {
+    const add = event.target.closest('[data-add]'); if (add) return openForm(add.dataset.add);
+    const edit = event.target.closest('[data-edit]'); if (edit) { const [type,id] = edit.dataset.edit.split(':'); return openForm(type,id); }
+    const del = event.target.closest('[data-delete]'); if (del) { const [type,id] = del.dataset.delete.split(':'); return confirmDelete(type,id); }
+    const profile = event.target.closest('[data-profile]'); if (profile) { openProfile(profile.dataset.profile); }
+    const clazz = event.target.closest('[data-class]'); if (clazz) { openClassDetails(clazz.dataset.class); }
+  };
+  const studentLevel = root.querySelector('#filter-students-level'); if (studentLevel) studentLevel.onchange = (e)=>{ state.filters.studentsLevel = e.target.value; render(); };
+  const studentClass = root.querySelector('#filter-students-class'); if (studentClass) studentClass.onchange = (e)=>{ state.filters.studentsClass = e.target.value; render(); };
+  const studentSearch = root.querySelector('#filter-students-search'); if (studentSearch) studentSearch.oninput = (e)=>{ state.filters.studentsSearch = e.target.value; render(); };
+  const scoreSubject = root.querySelector('#filter-scores-subject'); if (scoreSubject) scoreSubject.onchange = (e)=>{ state.filters.scoresSubject = e.target.value; render(); };
+  const scoreLevel = root.querySelector('#filter-scores-level'); if (scoreLevel) scoreLevel.onchange = (e)=>{ state.filters.scoresLevel = e.target.value; render(); };
+  const scoreClass = root.querySelector('#filter-scores-class'); if (scoreClass) scoreClass.onchange = (e)=>{ state.filters.scoresClass = e.target.value; render(); };
+  const scoreStudent = root.querySelector('#filter-scores-student'); if (scoreStudent) scoreStudent.oninput = (e)=>{ state.filters.scoresStudent = e.target.value; render(); };
+  const scoreGrade = root.querySelector('#filter-scores-grade'); if (scoreGrade) scoreGrade.onchange = (e)=>{ state.filters.scoresGrade = e.target.value; render(); };
+  const classesSearch = root.querySelector('#filter-classes-search'); if (classesSearch) classesSearch.oninput = (e)=>{ state.filters.classesSearch = e.target.value; render(); };
+  const subjectsSearch = root.querySelector('#filter-subjects-search'); if (subjectsSearch) subjectsSearch.oninput = (e)=>{ state.filters.subjectsSearch = e.target.value; render(); };
+  const clearFilters = root.querySelector('#clear-filters'); if (clearFilters) clearFilters.onclick = () => { clearPageFilters(state.page); render(); };
+}
+
+function clearPageFilters(type){
+  if (type === 'students'){
+    state.filters.studentsLevel = 'all';
+    state.filters.studentsClass = 'all';
+    state.filters.studentsSearch = '';
+  }
+  if (type === 'scores'){
+    state.filters.scoresSubject = 'all';
+    state.filters.scoresLevel = 'all';
+    state.filters.scoresClass = 'all';
+    state.filters.scoresStudent = '';
+    state.filters.scoresGrade = 'all';
+  }
+  if (type === 'classes') state.filters.classesSearch = '';
+  if (type === 'subjects') state.filters.subjectsSearch = '';
+}
+
+function openForm(type,id){
+  const isNew = !id;
+  if (type==='student'){ const item = state.students.find(s=>s.id===id) || {}; const classOptions = state.classes.map(c=>`<option value='${esc(c.name)}' ${c.name===item.className?'selected':''}>${esc(c.name)}</option>`).join('');
+    const content = `
+      <form id='record-form'>
+        <label>Full name<input name='fullName' required value='${esc(item.fullName||'')}'></label>
+        <label>Gender<select name='gender' required><option value='Male' ${item.gender==='Male'?'selected':''}>Male</option><option value='Female' ${item.gender==='Female'?'selected':''}>Female</option></select></label>
+        <label>Age<input name='age' type='number' required value='${esc(item.age||'')}'></label>
+        <label>Class<select name='className' required><option value=''>Select...</option>${classOptions}</select></label>
+        <label>Parent contact<input name='parentContact' required value='${esc(item.parentContact||'')}'></label>
+        <div class='modal-footer'><button type='button' class='button secondary' data-close>Cancel</button><button class='button'>Save</button></div>
+      </form>`;
+    openModal(`${isNew?'Add':'Edit'} student`, content, async (form)=>{
+      const data = Object.fromEntries(new FormData(form)); data.age = Number(data.age);
+      if (isNew) await createStudent(data); else await updateStudent(id, data);
+      closeModal(); toast('Student saved.','success'); refreshAll(true);
+    });
+    return;
+  }
+  if (type==='class'){ const item = state.classes.find(s=>s.id===id) || {}; const content = `<form id='record-form'><label>Class name<input name='name' required value='${esc(item.name||'')}'></label><label>Level<select name='level' required>${gradeLevels.map((level)=>`<option value='${level}' ${item.level===Number(level)?'selected':''}>${level==='all'?'Select level':`Grade ${level}`}</option>`).join('')}</select></label><label>Capacity<input name='capacity' type='number' min='1' required value='${esc(item.capacity||'')}'></label><div class='modal-footer'><button type='button' class='button secondary' data-close>Cancel</button><button class='button'>Save</button></div></form>`; openModal(`${isNew?'Add':'Edit'} class`, content, async(form)=>{ const data = Object.fromEntries(new FormData(form)); data.level = Number(data.level); data.capacity = Number(data.capacity); if (isNew) await createClass(data); else await updateClass(id,data); closeModal(); toast('Class saved.','success'); refreshAll(true); }); return; }
+  if (type==='subject'){ const item = state.subjects.find(s=>s.id===id) || {}; const content = `<form id='record-form'><label>Name<input name='name' required value='${esc(item.name||'')}'></label><div class='modal-footer'><button type='button' class='button secondary' data-close>Cancel</button><button class='button'>Save</button></div></form>`; openModal(`${isNew?'Add':'Edit'} subject`, content, async(form)=>{ const data = Object.fromEntries(new FormData(form)); if (isNew) await createSubject(data); else await updateSubject(id,data); closeModal(); toast('Subject saved.','success'); refreshAll(true); }); return; }
+  if (type==='score'){ const item = state.scores.find(s=>s.id===id) || {}; const studentOptions = state.students.map(st=>`<option value='${st.id}' ${st.id===item.studentId?'selected':''}>${esc(st.fullName)} (${esc(st.className)})</option>`).join(''); const subjectOptions = state.subjects.map(sub=>`<option value='${sub.id}' ${sub.id===item.subjectId?'selected':''}>${esc(sub.name)}</option>`).join(''); const content = `<form id='record-form'><label>Student<select name='studentId' required><option value=''>Select...</option>${studentOptions}</select></label><label>Subject<select name='subjectId' required><option value=''>Select...</option>${subjectOptions}</select></label><label>Score<input name='score' type='number' min='0' max='100' required value='${esc(item.score||'')}'></label><div class='modal-footer'><button type='button' class='button secondary' data-close>Cancel</button><button class='button'>Save</button></div></form>`; openModal(`${isNew?'Assign':'Edit'} score`, content, async(form)=>{ const data = Object.fromEntries(new FormData(form)); data.score = Number(data.score); if (data.score < 0 || data.score > 100) throw new Error('Score must be between 0 and 100'); if (isNew && state.scores.some(s=>s.student && s.student.id===data.studentId && s.subject && s.subject.id===data.subjectId)) throw new Error('Duplicate score for this student and subject'); if (isNew) await assignScore(data); else await updateScore(id, { score: data.score }); closeModal(); toast('Score saved.','success'); refreshAll(true); }); return; }
+}
+
+function confirmDelete(type,id){ openModal('Confirm deletion', `<div class='modal-content'><p>Delete this record? This action cannot be undone.</p><div class='modal-footer'><button class='button secondary' data-close>Cancel</button><button id='confirm-delete' class='button danger'>Delete</button></div></div>`); document.getElementById('confirm-delete').onclick = async ()=>{ try{ if (type==='students') await deleteStudent(id); else if (type==='subjects') await deleteSubject(id); else if (type==='classes') await deleteClass(id); else if (type==='scores') await deleteScore(id); closeModal(); toast('Deleted.','success'); refreshAll(true); } catch(err){ toast(err.message,'error'); } } }
+
+function openProfile(studentId){
+  const student = state.students.find(s=>s.id===studentId); if (!student) return;
+  const stuScores = state.scores.filter((s)=> s.student?.id === studentId);
+  const avg = stuScores.length ? (stuScores.reduce((a,b)=>a+b.score,0)/stuScores.length).toFixed(2) : '—';
+  const best = stuScores.length ? stuScores.reduce((bestScore,s) => s.score > bestScore.score ? s : bestScore, stuScores[0]) : null;
+  const lowest = stuScores.length ? stuScores.reduce((lowScore,s) => s.score < lowScore.score ? s : lowScore, stuScores[0]) : null;
+  const rows = stuScores.map(s=>`<tr><td>${esc(s.subject?.name||'Unknown')}</td><td>${s.score}</td><td>${esc(s.grade)}</td><td>${esc(s.remark)}</td></tr>`).join('') || `<tr><td colspan='4' class='muted'>No scores recorded.</td></tr>`;
+  const content = `<div class='profile-sheet'><h3>${esc(student.fullName)}</h3><p><strong>Class:</strong> ${esc(student.className)}</p><p><strong>Gender:</strong> ${esc(student.gender)} · <strong>Age:</strong> ${esc(student.age)}</p><p><strong>Parent contact:</strong> ${esc(student.parentContact)}</p><div class='profile-summary'><div><strong>Average score</strong><p>${avg}</p></div><div><strong>Best subject</strong><p>${best ? esc(best.subject?.name) + ' (' + best.score + ')' : '—'}</p></div><div><strong>Lowest subject</strong><p>${lowest ? esc(lowest.subject?.name) + ' (' + lowest.score + ')' : '—'}</p></div></div><h4>Scores (${stuScores.length})</h4><table class='table-card'><thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Remark</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  openModal('Student profile', content, null);
+}
+
+function openClassDetails(classId){
+  const clazz = state.classes.find((c)=>c.id===classId); if (!clazz) return;
+  const assignedStudents = state.students.filter((s)=>s.className === clazz.name);
+  const rows = assignedStudents.map((student)=>`<tr><td>${esc(student.fullName)}</td><td>${esc(student.gender)}</td><td>${student.age}</td><td>${esc(student.parentContact)}</td></tr>`).join('') || `<tr><td colspan='4' class='muted'>No students assigned to this class yet.</td></tr>`;
+  const content = `<div class='profile-sheet'><h3>${esc(clazz.name)}</h3><p><strong>Level:</strong> Grade ${clazz.level}</p><p><strong>Capacity:</strong> ${clazz.capacity}</p><p><strong>Current students:</strong> ${assignedStudents.length}</p><h4>Class roster</h4><table class='table-card'><thead><tr><th>Student</th><th>Gender</th><th>Age</th><th>Parent contact</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  openModal('Class profile', content, null);
+}
+
+function openModal(title,content,submit){ document.getElementById('modal-root').innerHTML = `<div class='modal-backdrop'><div class='modal'><header><h2>${title}</h2><button class='icon-button' data-close>x</button></header>${content}</div></div>`; document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModal); const form = document.getElementById('record-form'); if (form && submit) form.onsubmit = async (e)=>{ e.preventDefault(); try{ await submit(form); } catch(err){ toast(err.message,'error'); } }; }
+
+function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
+
+function input(name,label,value='',type='text'){ return `<label>${label}<input name='${name}' type='${type}' value='${esc(value)}' required></label>`; }
+
+function esc(value){ const div = document.createElement('div'); div.textContent = value ?? ''; return div.innerHTML; }
+
+function skeleton(){ return `<section class='page'><div class='skeleton' style='width:180px'></div><div class='stats' style='margin-top:24px'>${[1,2,3,4].map(()=>'<div class=skeleton style=height:116px></div>').join('')}</div></section>`; }
+
+function stat(label,value){ return `<article class='stat'><span>${label}</span><strong>${value}</strong><small>Live record</small></article>`; }
+
+function toast(message,type='info'){ const toastElement = document.createElement('div'); toastElement.className = `toast ${type}`; toastElement.textContent = message; document.getElementById('toast-region').appendChild(toastElement); setTimeout(()=> toastElement.remove(), 3500); }

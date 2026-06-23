@@ -1,33 +1,20 @@
 module.exports = `
-  type Course {
+  type Subject {
     id: ID!
-    title: String!
-    credits: Int!
-    instructorId: ID
-    instructor: Instructor
-    enrolledStudents: [Student!]!
+    name: String!
   }
 
-  input CreateCourseInput {
-    title: String!
-    credits: Int!
-    instructorId: ID
-  }
-
-  input UpdateCourseInput {
-    title: String
-    credits: Int
-    instructorId: ID
-  }
+  input CreateSubjectInput { name: String! }
+  input UpdateSubjectInput { name: String }
 
   extend type Query {
-    courses: [Course!]!
-    course(id: ID!): Course
+    subjects: [Subject!]!
+    subject(id: ID!): Subject
   }
 
   extend type Mutation {
-    createCourse(input: CreateCourseInput!): Course!
-    updateCourse(id: ID!, input: UpdateCourseInput!): Course!
-    deleteCourse(id: ID!): Course!
+    createSubject(input: CreateSubjectInput!): Subject!
+    updateSubject(id: ID!, input: UpdateSubjectInput!): Subject!
+    deleteSubject(id: ID!): Subject!
   }
 `;
