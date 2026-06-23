@@ -21,7 +21,7 @@ const gradeFromScore = (value) => {
 module.exports = {
   scores: () => scores.map((item) => ({ ...item, grade: gradeFromScore(item.score)[0], remark: gradeFromScore(item.score)[1], student: () => students.find((s) => s.id === item.studentId), subject: () => subjects.find((s) => s.id === item.subjectId) })),
   score: ({ id }) => { const item = scores.find((s) => s.id === String(id)); if (!item) throw missingScore(id); return { ...item, grade: gradeFromScore(item.score)[0], remark: gradeFromScore(item.score)[1], student: () => students.find((s) => s.id === item.studentId), subject: () => subjects.find((s) => s.id === item.subjectId) }; },
-  assignScore: ({ input }) => {
+  createScore: ({ input }) => {
     const studentId = String(input.studentId); const subjectId = String(input.subjectId); const scoreVal = Number(input.score);
     if (!students.some((s) => s.id === studentId)) throw missingStudent(studentId);
     if (!subjects.some((s) => s.id === subjectId)) throw missingSubject(subjectId);
@@ -33,9 +33,19 @@ module.exports = {
   },
   updateScore: ({ id, input }) => {
     const item = scores.find((s) => s.id === String(id)); if (!item) throw missingScore(id);
-    const scoreVal = Number(input.score);
-    if (!Number.isFinite(scoreVal) || scoreVal < 0 || scoreVal > 100) throw bad('Score must be a number between 0 and 100.');
-    item.score = scoreVal; return { ...item, grade: gradeFromScore(item.score)[0], remark: gradeFromScore(item.score)[1], student: () => students.find((s) => s.id === item.studentId), subject: () => subjects.find((s) => s.id === item.subjectId) };
+    const studentId = input.studentId === undefined ? item.studentId : String(input.studentId);
+    const subjectId = input.subjectId === undefined ? item.subjectId : String(input.subjectId);
+    if (!students.some((s) => s.id === studentId)) throw missingStudent(studentId);
+    if (!subjects.some((s) => s.id === subjectId)) throw missingSubject(subjectId);
+    if (scores.some((score) => score.id !== item.id && score.studentId === studentId && score.subjectId === subjectId)) throw new GraphQLError('A score for this student and subject already exists.', { extensions: { code: 'DUPLICATE_RECORD' } });
+    if (input.score !== undefined) {
+      const scoreVal = Number(input.score);
+      if (!Number.isFinite(scoreVal) || scoreVal < 0 || scoreVal > 100) throw bad('Score must be a number between 0 and 100.');
+      item.score = scoreVal;
+    }
+    item.studentId = studentId;
+    item.subjectId = subjectId;
+    return { ...item, grade: gradeFromScore(item.score)[0], remark: gradeFromScore(item.score)[1], student: () => students.find((s) => s.id === item.studentId), subject: () => subjects.find((s) => s.id === item.subjectId) };
   },
   deleteScore: ({ id }) => {
     const index = scores.findIndex((s) => s.id === String(id)); if (index < 0) throw missingScore(id); return scores.splice(index, 1)[0];

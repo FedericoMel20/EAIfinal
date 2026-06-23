@@ -4,6 +4,8 @@ const path = require('path');
 const { buildSchema } = require('graphql');
 const { createHandler } = require('graphql-http/lib/use/express');
 
+// The school schema is split across legacy filenames: course -> subject,
+// enrollment -> class, and grade -> score.  Register every one of them.
 const schemas = ['student', 'course', 'enrollment', 'grade'].map((name) => require(`./schema/${name}`));
 // Note: schema files were repurposed: course -> subject, enrollment -> class, grade -> score
 const rootValue = Object.assign({}, ...['studentResolver', 'subjectResolver', 'classResolver', 'scoreResolver'].map((name) => require(`./resolvers/${name}`)));

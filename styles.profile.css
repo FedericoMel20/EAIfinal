@@ -1,0 +1,25 @@
+/* Profile modal overrides and layout */
+.modal{width:min(1000px,95%) !important;max-height:calc(100dvh - 40px);border-radius:18px !important;display:flex;flex-direction:column;overflow:hidden}
+.modal-backdrop{animation:fadeIn .18s ease}
+.modal header{flex:0 0 auto}
+.modal .modal-content{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 24px 24px}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.profile-header-compact{display:flex;gap:18px;align-items:center}
+.profile-avatar{width:84px;height:84px;border-radius:14px;background:linear-gradient(135deg,var(--blue),var(--navy));display:grid;place-items:center;color:white;font-weight:800;font-size:26px;box-shadow:0 6px 20px rgba(13,35,66,.12)}
+.profile-identity{display:grid;gap:6px}
+.profile-identity h3{margin:0;font-size:22px}
+.profile-identity p{margin:0;color:var(--muted)}
+.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+.info-card{padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.stats-row{display:flex;gap:12px;margin-top:18px}
+.stat-card{flex:1;padding:18px;background:radial-gradient(circle,#fff,rgba(255,255,255,.98));border-radius:12px;border:1px solid rgba(0,0,0,.04);box-shadow:0 10px 30px rgba(16,35,65,.06);display:flex;flex-direction:column;justify-content:space-between}
+.stat-card strong{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.stat-card p{margin:8px 0 0;font-size:20px;font-weight:800}
+.grade-badge{display:inline-block;padding:6px 10px;border-radius:999px;color:white;font-weight:700}
+.grade-A{background:var(--green)}
+.grade-B{background:#2b8af5}
+.grade-C{background:#f3c13a;color:#222}
+.grade-D{background:#f69d3c}
+.grade-E{background:#e35b4b}
+.grade-F{background:#9b1f2a}
+@media(max-width:900px){.modal{width:95%;max-height:calc(100dvh - 24px)}.modal .modal-content{padding:16px}.profile-grid{grid-template-columns:1fr}.stats-row{flex-direction:row;overflow-x:auto}.stat-card{min-width:180px}}

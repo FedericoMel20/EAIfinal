@@ -47,7 +47,11 @@ module.exports = {
     const item = get(id); if (!item) throw missing(id);
     if (input.fullName !== undefined) item.fullName = text(input.fullName, 'Full name');
     if (input.gender !== undefined) item.gender = text(input.gender, 'Gender');
-    if (input.age !== undefined) item.age = Number(input.age);
+    if (input.age !== undefined) {
+      const age = Number(input.age);
+      if (!Number.isInteger(age) || age < 1) throw new GraphQLError('Age must be a positive whole number.', { extensions: { code: 'BAD_USER_INPUT' } });
+      item.age = age;
+    }
     if (input.className !== undefined) {
       if (!classes.some((c) => c.name === input.className)) throw new GraphQLError(`Class '${input.className}' was not found.`, { extensions: { code: 'NOT_FOUND' } });
       item.className = text(input.className, 'Class');
@@ -57,7 +61,7 @@ module.exports = {
   },
   deleteStudent: ({ id }) => {
     const index = students.findIndex((s) => s.id === String(id)); if (index < 0) throw missing(id);
-    if (scores.some((sc) => sc.studentId === String(id))) throw new GraphQLError('Cannot delete a student with recorded scores.', { extensions: { code: 'RELATIONSHIP_VIOLATION' } });
+    for (let scoreIndex = scores.length - 1; scoreIndex >= 0; scoreIndex -= 1) if (scores[scoreIndex].studentId === String(id)) scores.splice(scoreIndex, 1);
     return students.splice(index, 1)[0];
   }
 };

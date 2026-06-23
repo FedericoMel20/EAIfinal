@@ -47,8 +47,8 @@ async function request(query, variables = {}) {
 
 async function fetchStudents(){ state.students = (await request(`query{students{id fullName gender age className parentContact}}`)).students; }
 async function fetchSubjects(){ state.subjects = (await request(`query{subjects{id name}}`)).subjects; }
-async function fetchClasses(){ state.classes = (await request(`query{classes{id name totalStudents}}`)).classes; }
-async function fetchScores(){ state.scores = (await request(`query{scores{id score grade remark student{fullName className id} subject{id name}}}`)).scores; }
+async function fetchClasses(){ state.classes = (await request(`query{classes{id name level capacity totalStudents}}`)).classes; }
+async function fetchScores(){ state.scores = (await request(`query{scores{id studentId subjectId score grade remark student{id fullName className} subject{id name}}}`)).scores; }
 
 async function createStudent(input){ return request(`mutation($input:CreateStudentInput!){createStudent(input:$input){id}}`,{input}); }
 async function updateStudent(id,input){ return request(`mutation($id:ID!,$input:UpdateStudentInput!){updateStudent(id:$id,input:$input){id}}`,{id,input}); }
@@ -62,7 +62,7 @@ async function createSubject(input){ return request(`mutation($input:CreateSubje
 async function updateSubject(id,input){ return request(`mutation($id:ID!,$input:UpdateSubjectInput!){updateSubject(id:$id,input:$input){id}}`,{id,input}); }
 async function deleteSubject(id){ return request(`mutation($id:ID!){deleteSubject(id:$id){id}}`,{id}); }
 
-async function assignScore(input){ return request(`mutation($input:AssignScoreInput!){assignScore(input:$input){id}}`,{input}); }
+async function createScore(input){ return request(`mutation($input:CreateScoreInput!){createScore(input:$input){id}}`,{input}); }
 async function updateScore(id,input){ return request(`mutation($id:ID!,$input:UpdateScoreInput!){updateScore(id:$id,input:$input){id}}`,{id,input}); }
 async function deleteScore(id){ return request(`mutation($id:ID!){deleteScore(id:$id){id}}`,{id}); }
 
@@ -238,7 +238,12 @@ function bindPage(){
   const root = document.getElementById('page-root');
   root.onclick = (event) => {
     const add = event.target.closest('[data-add]'); if (add) return openForm(add.dataset.add);
-    const edit = event.target.closest('[data-edit]'); if (edit) { const [type,id] = edit.dataset.edit.split(':'); return openForm(type,id); }
+    const edit = event.target.closest('[data-edit]');
+    if (edit) {
+      const [type, id] = edit.dataset.edit.split(':');
+      const formType = { students: 'student', subjects: 'subject', classes: 'class', scores: 'score' }[type];
+      if (formType) return openForm(formType, id);
+    }
     const del = event.target.closest('[data-delete]'); if (del) { const [type,id] = del.dataset.delete.split(':'); return confirmDelete(type,id); }
     const profile = event.target.closest('[data-profile]'); if (profile) { openProfile(profile.dataset.profile); }
     const clazz = event.target.closest('[data-class]'); if (clazz) { openClassDetails(clazz.dataset.class); }
@@ -294,7 +299,7 @@ function openForm(type,id){
   }
   if (type==='class'){ const item = state.classes.find(s=>s.id===id) || {}; const content = `<form id='record-form'><label>Class name<input name='name' required value='${esc(item.name||'')}'></label><label>Level<select name='level' required>${gradeLevels.map((level)=>`<option value='${level}' ${item.level===Number(level)?'selected':''}>${level==='all'?'Select level':`Grade ${level}`}</option>`).join('')}</select></label><label>Capacity<input name='capacity' type='number' min='1' required value='${esc(item.capacity||'')}'></label><div class='modal-footer'><button type='button' class='button secondary' data-close>Cancel</button><button class='button'>Save</button></div></form>`; openModal(`${isNew?'Add':'Edit'} class`, content, async(form)=>{ const data = Object.fromEntries(new FormData(form)); data.level = Number(data.level); data.capacity = Number(data.capacity); if (isNew) await createClass(data); else await updateClass(id,data); closeModal(); toast('Class saved.','success'); refreshAll(true); }); return; }
   if (type==='subject'){ const item = state.subjects.find(s=>s.id===id) || {}; const content = `<form id='record-form'><label>Name<input name='name' required value='${esc(item.name||'')}'></label><div class='modal-footer'><button type='button' class='button secondary' data-close>Cancel</button><button class='button'>Save</button></div></form>`; openModal(`${isNew?'Add':'Edit'} subject`, content, async(form)=>{ const data = Object.fromEntries(new FormData(form)); if (isNew) await createSubject(data); else await updateSubject(id,data); closeModal(); toast('Subject saved.','success'); refreshAll(true); }); return; }
-  if (type==='score'){ const item = state.scores.find(s=>s.id===id) || {}; const studentOptions = state.students.map(st=>`<option value='${st.id}' ${st.id===item.studentId?'selected':''}>${esc(st.fullName)} (${esc(st.className)})</option>`).join(''); const subjectOptions = state.subjects.map(sub=>`<option value='${sub.id}' ${sub.id===item.subjectId?'selected':''}>${esc(sub.name)}</option>`).join(''); const content = `<form id='record-form'><label>Student<select name='studentId' required><option value=''>Select...</option>${studentOptions}</select></label><label>Subject<select name='subjectId' required><option value=''>Select...</option>${subjectOptions}</select></label><label>Score<input name='score' type='number' min='0' max='100' required value='${esc(item.score||'')}'></label><div class='modal-footer'><button type='button' class='button secondary' data-close>Cancel</button><button class='button'>Save</button></div></form>`; openModal(`${isNew?'Assign':'Edit'} score`, content, async(form)=>{ const data = Object.fromEntries(new FormData(form)); data.score = Number(data.score); if (data.score < 0 || data.score > 100) throw new Error('Score must be between 0 and 100'); if (isNew && state.scores.some(s=>s.student && s.student.id===data.studentId && s.subject && s.subject.id===data.subjectId)) throw new Error('Duplicate score for this student and subject'); if (isNew) await assignScore(data); else await updateScore(id, { score: data.score }); closeModal(); toast('Score saved.','success'); refreshAll(true); }); return; }
+  if (type==='score'){ const item = state.scores.find(s=>s.id===id) || {}; const studentOptions = state.students.map(st=>`<option value='${st.id}' ${st.id===item.studentId?'selected':''}>${esc(st.fullName)} (${esc(st.className)})</option>`).join(''); const subjectOptions = state.subjects.map(sub=>`<option value='${sub.id}' ${sub.id===item.subjectId?'selected':''}>${esc(sub.name)}</option>`).join(''); const locked = isNew ? '' : ' disabled'; const content = `<form id='record-form'><label>Student<select name='studentId' required${locked}><option value=''>Select...</option>${studentOptions}</select></label><label>Subject<select name='subjectId' required${locked}><option value=''>Select...</option>${subjectOptions}</select></label><label>Score<input name='score' type='number' min='0' max='100' required value='${esc(item.score ?? '')}'></label><div class='modal-footer'><button type='button' class='button secondary' data-close>Cancel</button><button class='button'>Save</button></div></form>`; openModal(`${isNew?'Assign':'Edit'} score`, content, async(form)=>{ const data = Object.fromEntries(new FormData(form)); data.score = Number(data.score); if (data.score < 0 || data.score > 100) throw new Error('Score must be between 0 and 100'); if (isNew && state.scores.some(s=>s.studentId===data.studentId && s.subjectId===data.subjectId)) throw new Error('Duplicate score for this student and subject'); if (isNew) await createScore(data); else await updateScore(id, { score: data.score }); closeModal(); toast('Score saved.','success'); refreshAll(true); }); return; }
 }
 
 function confirmDelete(type,id){ openModal('Confirm deletion', `<div class='modal-content'><p>Delete this record? This action cannot be undone.</p><div class='modal-footer'><button class='button secondary' data-close>Cancel</button><button id='confirm-delete' class='button danger'>Delete</button></div></div>`); document.getElementById('confirm-delete').onclick = async ()=>{ try{ if (type==='students') await deleteStudent(id); else if (type==='subjects') await deleteSubject(id); else if (type==='classes') await deleteClass(id); else if (type==='scores') await deleteScore(id); closeModal(); toast('Deleted.','success'); refreshAll(true); } catch(err){ toast(err.message,'error'); } } }
@@ -306,7 +311,32 @@ function openProfile(studentId){
   const best = stuScores.length ? stuScores.reduce((bestScore,s) => s.score > bestScore.score ? s : bestScore, stuScores[0]) : null;
   const lowest = stuScores.length ? stuScores.reduce((lowScore,s) => s.score < lowScore.score ? s : lowScore, stuScores[0]) : null;
   const rows = stuScores.map(s=>`<tr><td>${esc(s.subject?.name||'Unknown')}</td><td>${s.score}</td><td>${esc(s.grade)}</td><td>${esc(s.remark)}</td></tr>`).join('') || `<tr><td colspan='4' class='muted'>No scores recorded.</td></tr>`;
-  const content = `<div class='profile-sheet'><h3>${esc(student.fullName)}</h3><p><strong>Class:</strong> ${esc(student.className)}</p><p><strong>Gender:</strong> ${esc(student.gender)} · <strong>Age:</strong> ${esc(student.age)}</p><p><strong>Parent contact:</strong> ${esc(student.parentContact)}</p><div class='profile-summary'><div><strong>Average score</strong><p>${avg}</p></div><div><strong>Best subject</strong><p>${best ? esc(best.subject?.name) + ' (' + best.score + ')' : '—'}</p></div><div><strong>Lowest subject</strong><p>${lowest ? esc(lowest.subject?.name) + ' (' + lowest.score + ')' : '—'}</p></div></div><h4>Scores (${stuScores.length})</h4><table class='table-card'><thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Remark</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const content = `<div class='profile-sheet'>
+    <div class='profile-header'>
+      <div class='profile-identity'>
+        <h3>${esc(student.fullName)}</h3>
+        <p class='profile-subtitle'>${esc(student.className)} · ${esc(student.gender)} · ${esc(student.age)} yrs</p>
+        <p class='profile-tag'>Parent: ${esc(student.parentContact)}</p>
+      </div>
+      <div class='profile-meta'>
+        <span class='pill'>${esc(student.className)}</span>
+        <span class='pill'>${esc(student.gender)}</span>
+        <span class='pill'>${esc(student.age)} yrs</span>
+      </div>
+    </div>
+    <div class='profile-summary'>
+      <div><strong>Average score</strong><p>${avg}</p></div>
+      <div><strong>Best subject</strong><p>${best ? esc(best.subject?.name) + ' (' + best.score + ')' : '—'}</p></div>
+      <div><strong>Lowest subject</strong><p>${lowest ? esc(lowest.subject?.name) + ' (' + lowest.score + ')' : '—'}</p></div>
+    </div>
+    <section class='profile-table'>
+      <h4>Subject scores (${stuScores.length})</h4>
+      <table class='table-card'>
+        <thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Remark</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>
+  </div>`;
   openModal('Student profile', content, null);
 }
 
@@ -331,3 +361,58 @@ function skeleton(){ return `<section class='page'><div class='skeleton' style='
 function stat(label,value){ return `<article class='stat'><span>${label}</span><strong>${value}</strong><small>Live record</small></article>`; }
 
 function toast(message,type='info'){ const toastElement = document.createElement('div'); toastElement.className = `toast ${type}`; toastElement.textContent = message; document.getElementById('toast-region').appendChild(toastElement); setTimeout(()=> toastElement.remove(), 3500); }
+
+/* --- Overrides: improved modal controls and profile layout --- */
+function __closeModalInternal(){ const modalRoot = document.getElementById('modal-root'); modalRoot.innerHTML = ''; if (window.__ccEscHandler) { document.removeEventListener('keydown', window.__ccEscHandler); delete window.__ccEscHandler; } }
+function openModal(title,content,submit){ const modalRoot = document.getElementById('modal-root'); modalRoot.innerHTML = `<div class='modal-backdrop'><div class='modal'><header><h2>${title}</h2><button class='icon-button' data-close>x</button></header><div class='modal-content'>${content}</div></div></div>`; document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>__closeModalInternal()); const backdrop = modalRoot.querySelector('.modal-backdrop'); backdrop.addEventListener('click',(e)=>{ if (e.target===backdrop) __closeModalInternal(); }); window.__ccEscHandler = (e)=>{ if (e.key==='Escape') __closeModalInternal(); }; document.addEventListener('keydown', window.__ccEscHandler); const form = document.getElementById('record-form'); if (form && submit) form.onsubmit = async (e)=>{ e.preventDefault(); try{ await submit(form); } catch(err){ toast(err.message,'error'); } } }
+function closeModal(){ __closeModalInternal(); }
+
+// Replace previous openProfile with enhanced layout
+openProfile = function(studentId){ const student = state.students.find(s=>s.id===studentId); if (!student) return; const stuScores = state.scores.filter((s)=> s.student?.id === studentId); const avg = stuScores.length ? (stuScores.reduce((a,b)=>a+b.score,0)/stuScores.length).toFixed(2) : '—'; const best = stuScores.length ? stuScores.reduce((bestScore,s) => s.score > bestScore.score ? s : bestScore, stuScores[0]) : null; const lowest = stuScores.length ? stuScores.reduce((lowScore,s) => s.score < lowScore.score ? s : lowScore, stuScores[0]) : null; const highestScore = stuScores.length ? Math.max(...stuScores.map(s=>s.score)) : '—'; const lowestScore = stuScores.length ? Math.min(...stuScores.map(s=>s.score)) : '—'; const rows = stuScores.map(s=>{ const grade = s.grade || gradeFromScore(s.score); const gradeClass = `grade-${grade}`; return `<tr><td>${esc(s.subject?.name||'Unknown')}</td><td>${s.score}</td><td><span class='grade-badge ${gradeClass}'>${grade}</span></td><td>${esc(s.remark)}</td></tr>`; }).join('') || `<tr><td colspan='4' class='muted'>No scores recorded.</td></tr>`; const initials = student.fullName.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase(); const studentIdLabel = `STD-${String(student.id).padStart(3,'0')}`; const content = `
+  <div class='profile-sheet'>
+    <div class='profile-header profile-header-compact'>
+      <div class='profile-avatar'>${initials}</div>
+      <div class='profile-identity'>
+        <h3>${esc(student.fullName)}</h3>
+        <p class='profile-subtitle'>${esc(student.className)} · ${esc(student.gender)} · ${esc(student.age)} yrs</p>
+        <p class='profile-tag'>Student ID: ${studentIdLabel}</p>
+      </div>
+      <div style='margin-left:auto' class='profile-meta'>
+        <span class='pill'>${esc(student.className)}</span>
+      </div>
+    </div>
+    <div class='profile-grid'>
+      <div class='info-card'>
+        <h4>Personal information</h4>
+        <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px'>
+          <div><strong>Full name</strong><div>${esc(student.fullName)}</div></div>
+          <div><strong>Class</strong><div>${esc(student.className)}</div></div>
+          <div><strong>Gender</strong><div>${esc(student.gender)}</div></div>
+          <div><strong>Parent contact</strong><div>${esc(student.parentContact)}</div></div>
+          <div><strong>Age</strong><div>${esc(student.age)} yrs</div></div>
+          <div><strong>Enrollment</strong><div>Active</div></div>
+        </div>
+      </div>
+      <div>
+        <div class='stats-row'>
+          <div class='stat-card'><strong>Average score</strong><p>${avg}</p></div>
+          <div class='stat-card'><strong>Best subject</strong><p>${best ? esc(best.subject?.name) + ' (' + best.score + ')' : '—'}</p></div>
+          <div class='stat-card'><strong>Highest score</strong><p>${highestScore}</p></div>
+          <div class='stat-card'><strong>Lowest subject</strong><p>${lowest ? esc(lowest.subject?.name) + ' (' + lowest.score + ')' : '—'}</p></div>
+          <div class='stat-card'><strong>Lowest score</strong><p>${lowestScore}</p></div>
+        </div>
+        <section class='profile-table' style='margin-top:18px'>
+          <h4>Subject scores (${stuScores.length})</h4>
+          <table class='table-card'>
+            <thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Remark</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+    <div style='margin-top:18px' class='info-card'>
+      <strong>Performance Level:</strong> <span style='margin-left:8px;font-weight:700'>${avg !== '—' && avg >= 85 ? 'Excellent' : avg !== '—' && avg >= 75 ? 'Very Good' : avg !== '—' && avg >= 65 ? 'Credit' : avg !== '—' && avg >= 55 ? 'Satisfactory' : avg !== '—' && avg >= 40 ? 'Pass' : avg !== '—' ? 'Fail' : '—'}</span>
+      <div style='margin-top:8px'><strong>Subjects Passed:</strong> <span style='margin-left:8px'>${stuScores.filter(s=>s.score>=40).length}</span> <strong style='margin-left:16px'>Subjects Failed:</strong> <span style='margin-left:8px'>${stuScores.filter(s=>s.score<40).length}</span></div>
+      <div style='margin-top:8px'><strong>Overall Remark:</strong> <span style='margin-left:8px'>${avg !== '—' && avg >= 85 ? 'Outstanding Academic Performance' : avg !== '—' ? 'Keep improving' : '—'}</span></div>
+    </div>
+  </div>`; openModal('Student profile', content, null); };

@@ -10,8 +10,8 @@ module.exports = `
     subject: Subject!
   }
 
-  input AssignScoreInput { studentId: ID!, subjectId: ID!, score: Int! }
-  input UpdateScoreInput { score: Int! }
+  input CreateScoreInput { studentId: ID!, subjectId: ID!, score: Int! }
+  input UpdateScoreInput { studentId: ID, subjectId: ID, score: Int }
 
   extend type Query {
     scores: [Score!]!
@@ -19,7 +19,7 @@ module.exports = `
   }
 
   extend type Mutation {
-    assignScore(input: AssignScoreInput!): Score!
+    createScore(input: CreateScoreInput!): Score!
     updateScore(id: ID!, input: UpdateScoreInput!): Score!
     deleteScore(id: ID!): Score!
   }

@@ -26,7 +26,9 @@ module.exports = {
     if (input.name !== undefined) {
       const name = text(input.name, 'Class name');
       if (classes.some((c) => c.id !== item.id && c.name.toLowerCase() === name.toLowerCase())) throw new GraphQLError('A class with this name already exists.', { extensions: { code: 'DUPLICATE_RECORD' } });
+      const oldName = item.name;
       item.name = name;
+      students.filter((student) => student.className === oldName).forEach((student) => { student.className = name; });
     }
     if (input.level !== undefined) {
       const level = integer(input.level, 'Level');
